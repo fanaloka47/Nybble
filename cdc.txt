@@ -1,0 +1,3 @@
+I am an FPGA engineer. In my work, I often need to perform computations using different bases: hexadecimal, decimal, binary. I cannot find a suitable calculator that does that easily.
+I would like to develop such an app that would be usable on windows and linux. It should be fast, easy to use and primary serve this goal of being able to play with different number representations.
+Ask me the questions you need to clarify my need.

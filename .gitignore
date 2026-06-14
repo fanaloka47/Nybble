@@ -1,0 +1,21 @@
+# Rust build output
+/target/
+
+# Backtrace / debug artifacts
+*.pdb
+
+# Cargo — keep Cargo.lock for the binary crate (reproducible builds),
+# so it is intentionally NOT ignored.
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+_bmad
+.claude

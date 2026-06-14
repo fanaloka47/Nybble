@@ -1,0 +1,9 @@
+[package]
+name = "powercalc-core"
+version = "0.1.0"
+edition = "2021"
+description = "Pure numeric core for PowerCalc: multi-base values, width/signedness, ops, expressions."
+
+[lib]
+name = "powercalc_core"
+path = "src/lib.rs"
