@@ -80,6 +80,11 @@ pub fn accent(ctx: &egui::Context) -> Color32 {
     palette(ctx.theme()).accent
 }
 
+/// Legible text color to place on top of the accent fill.
+pub fn on_accent(ctx: &egui::Context) -> Color32 {
+    palette(ctx.theme()).on_accent
+}
+
 /// A cohesive set of colors for one theme.
 struct Palette {
     dark: bool,
@@ -89,6 +94,7 @@ struct Palette {
     widget: Color32,
     widget_hover: Color32,
     text: Color32,
+    text_strong: Color32,
     border: Color32,
     accent: Color32,
     accent_soft: Color32,
@@ -105,6 +111,7 @@ fn palette(theme: Theme) -> Palette {
             widget: Color32::from_rgb(37, 42, 54),
             widget_hover: Color32::from_rgb(48, 54, 68),
             text: Color32::from_rgb(226, 229, 238),
+            text_strong: Color32::from_rgb(245, 247, 250),
             border: Color32::from_rgb(45, 51, 64),
             accent: Color32::from_rgb(129, 140, 248), // indigo-400
             accent_soft: Color32::from_rgba_unmultiplied(129, 140, 248, 90),
@@ -118,6 +125,7 @@ fn palette(theme: Theme) -> Palette {
             widget: Color32::from_rgb(237, 239, 244),
             widget_hover: Color32::from_rgb(226, 230, 238),
             text: Color32::from_rgb(28, 32, 40),
+            text_strong: Color32::from_rgb(17, 20, 26),
             border: Color32::from_rgb(214, 218, 226),
             accent: Color32::from_rgb(79, 70, 229), // indigo-600
             accent_soft: Color32::from_rgba_unmultiplied(79, 70, 229, 55),
@@ -173,12 +181,16 @@ fn build_style(theme: Theme) -> Style {
         fg_stroke: Stroke::new(1.0, p.text),
         expansion: 1.0,
     };
+    // NB: `active.fg_stroke` doubles as the app-wide "strong" text color
+    // (egui's `strong_text_color()` reads it), so it must stay a legible text
+    // color — not the on-accent color. The accent is applied explicitly where
+    // needed (Evaluate button, selections, bit grid).
     v.widgets.active = WidgetVisuals {
-        bg_fill: p.accent,
-        weak_bg_fill: p.accent,
+        bg_fill: p.widget_hover,
+        weak_bg_fill: p.widget_hover,
         bg_stroke: Stroke::new(1.0, p.accent),
         corner_radius: radius,
-        fg_stroke: Stroke::new(1.0, p.on_accent),
+        fg_stroke: Stroke::new(1.0, p.text_strong),
         expansion: 1.0,
     };
     v.widgets.open = WidgetVisuals {

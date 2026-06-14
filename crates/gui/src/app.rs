@@ -1,10 +1,10 @@
 //! PowerCalc application state and UI.
 //!
-//! One canonical [`Value`] drives everything. Editing any base field reparses
-//! it and refreshes the *other* fields; toggling a bit, evaluating an
-//! expression, or changing width/signedness updates the value and refreshes all
-//! fields. Signedness only changes the decimal rendering and the meaning of `>>`
-//! and `/`.
+//! The expression field is the centerpiece: type an expression, evaluate it, and
+//! it becomes the current value *and* an entry in the history. One canonical
+//! [`Value`] drives everything — the live base fields, the bit grid, and the
+//! history all read from it. Signedness only changes the decimal rendering and
+//! the meaning of `>>` and `/`.
 
 use powercalc_core::{eval, fixed, Signedness, Value, Width};
 
@@ -22,6 +22,67 @@ enum Field {
     Fixed,
 }
 
+/// Which base(s) the history list shows for each result.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum HistoryBase {
+    #[default]
+    All,
+    Hex,
+    Dec,
+    Bin,
+    Oct,
+}
+
+impl HistoryBase {
+    const ALL: [HistoryBase; 5] = [
+        HistoryBase::All,
+        HistoryBase::Hex,
+        HistoryBase::Dec,
+        HistoryBase::Bin,
+        HistoryBase::Oct,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            HistoryBase::All => "All",
+            HistoryBase::Hex => "HEX",
+            HistoryBase::Dec => "DEC",
+            HistoryBase::Bin => "BIN",
+            HistoryBase::Oct => "OCT",
+        }
+    }
+
+    fn key(self) -> &'static str {
+        match self {
+            HistoryBase::All => "all",
+            HistoryBase::Hex => "hex",
+            HistoryBase::Dec => "dec",
+            HistoryBase::Bin => "bin",
+            HistoryBase::Oct => "oct",
+        }
+    }
+
+    fn from_key(s: &str) -> Option<HistoryBase> {
+        match s {
+            "all" => Some(HistoryBase::All),
+            "hex" => Some(HistoryBase::Hex),
+            "dec" => Some(HistoryBase::Dec),
+            "bin" => Some(HistoryBase::Bin),
+            "oct" => Some(HistoryBase::Oct),
+            _ => None,
+        }
+    }
+}
+
+/// One evaluated expression and its result, captured with the sign mode in
+/// effect at the time so the decimal rendering stays faithful.
+#[derive(Clone)]
+struct HistoryEntry {
+    expr: String,
+    value: Value,
+    sign: Signedness,
+}
+
 pub struct App {
     value: Value,
     width: Width,
@@ -37,16 +98,26 @@ pub struct App {
     fixed_input: String,
     expr: String,
 
+    history: Vec<HistoryEntry>,
+    history_base: HistoryBase,
+
+    /// Error from the last expression evaluation, shown inline under the field.
+    /// Only set at evaluate time; cleared when the expression is edited.
+    expr_error: Option<String>,
     status: Option<String>,
     theme_mode: ThemeMode,
 }
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let theme_mode = cc
-            .storage
+        let storage = cc.storage;
+        let theme_mode = storage
             .and_then(|s| s.get_string("theme_mode"))
             .and_then(|s| ThemeMode::from_key(&s))
+            .unwrap_or_default();
+        let history_base = storage
+            .and_then(|s| s.get_string("history_base"))
+            .and_then(|s| HistoryBase::from_key(&s))
             .unwrap_or_default();
 
         let width = Width::new(32).unwrap();
@@ -62,6 +133,9 @@ impl App {
             oct: String::new(),
             fixed_input: String::new(),
             expr: String::new(),
+            history: Vec::new(),
+            history_base,
+            expr_error: None,
             status: None,
             theme_mode,
         };
@@ -158,20 +232,188 @@ impl App {
     }
 
     fn eval_expr(&mut self) {
-        if self.expr.trim().is_empty() {
+        let trimmed = self.expr.trim().to_owned();
+        if trimmed.is_empty() {
             return;
         }
         match eval(&self.expr, self.width, self.sign, self.value) {
             Ok(v) => {
                 self.value = v;
+                self.expr_error = None;
                 self.status = None;
+                self.push_history(trimmed, v);
                 self.refresh(None);
             }
-            Err(e) => self.status = Some(e.to_string()),
+            Err(e) => self.expr_error = Some(format!("Invalid expression: {e}")),
         }
     }
 
+    fn push_history(&mut self, expr: String, value: Value) {
+        self.history.push(HistoryEntry {
+            expr,
+            value,
+            sign: self.sign,
+        });
+        const MAX_HISTORY: usize = 200;
+        if self.history.len() > MAX_HISTORY {
+            let excess = self.history.len() - MAX_HISTORY;
+            self.history.drain(0..excess);
+        }
+    }
+
+    /// Bring a history entry back: restore its value, width, sign, and text.
+    fn recall(&mut self, entry: HistoryEntry) {
+        self.value = entry.value;
+        self.width = entry.value.width();
+        self.custom_width = self.width.bits();
+        self.sign = entry.sign;
+        if self.frac_bits > self.width.bits() {
+            self.frac_bits = self.width.bits();
+        }
+        self.expr = entry.expr;
+        self.expr_error = None;
+        self.status = None;
+        self.refresh(None);
+    }
+
     // --- UI sections -----------------------------------------------------
+
+    fn expression_centerpiece(&mut self, ui: &mut egui::Ui) {
+        section_label(ui, "EXPRESSION");
+
+        let accent = theme::accent(ui.ctx());
+        let on_accent = theme::on_accent(ui.ctx());
+
+        ui.horizontal(|ui| {
+            let resp = ui.add(
+                egui::TextEdit::singleline(&mut self.expr)
+                    .font(egui::FontId::new(22.0, egui::FontFamily::Monospace))
+                    .desired_width(ui.available_width() - 112.0)
+                    .hint_text("0xFF & (1 << 3)")
+                    .margin(egui::vec2(10.0, 8.0)),
+            );
+            // Editing the expression clears any stale "invalid" message — we
+            // only validate at evaluate time, never while typing.
+            if resp.changed() {
+                self.expr_error = None;
+            }
+            let entered =
+                resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            let clicked = ui
+                .add_sized(
+                    [96.0, 40.0],
+                    egui::Button::new(
+                        egui::RichText::new("Evaluate").size(16.0).color(on_accent),
+                    )
+                    .fill(accent),
+                )
+                .clicked();
+            if clicked || entered {
+                self.eval_expr();
+                resp.request_focus();
+            }
+        });
+
+        if let Some(err) = &self.expr_error {
+            ui.add_space(4.0);
+            ui.colored_label(egui::Color32::from_rgb(229, 115, 115), err);
+        }
+
+        ui.add_space(8.0);
+        ui.horizontal_wrapped(|ui| {
+            const OPS: &[(&str, &str)] = &[
+                ("AND", " & "),
+                ("OR", " | "),
+                ("XOR", " ^ "),
+                ("NOT", "~"),
+                ("SHL", " << "),
+                ("SHR", " >> "),
+                ("(", "("),
+                (")", ")"),
+                ("+", " + "),
+                ("-", " - "),
+                ("*", " * "),
+                ("/", " / "),
+                ("ans", "ans"),
+            ];
+            for (label, token) in OPS {
+                if ui.button(*label).clicked() {
+                    self.expr.push_str(token);
+                }
+            }
+            if ui.button("Clear").clicked() {
+                self.expr.clear();
+            }
+        });
+    }
+
+    fn history_panel(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            section_label(ui, "HISTORY");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Clear").clicked() {
+                    self.history.clear();
+                }
+                ui.separator();
+                for base in HistoryBase::ALL.into_iter().rev() {
+                    if ui
+                        .selectable_label(self.history_base == base, base.label())
+                        .clicked()
+                    {
+                        self.history_base = base;
+                    }
+                }
+            });
+        });
+        ui.add_space(4.0);
+
+        if self.history.is_empty() {
+            ui.label(
+                egui::RichText::new("No expressions evaluated yet — type one above and press Enter.")
+                    .weak(),
+            );
+            return;
+        }
+
+        let base = self.history_base;
+        let accent = theme::accent(ui.ctx());
+        let item_fill = ui.visuals().faint_bg_color;
+        let mut recall_idx: Option<usize> = None;
+
+        egui::ScrollArea::vertical()
+            .max_height(240.0)
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                // Newest first.
+                for (i, entry) in self.history.iter().enumerate().rev() {
+                    egui::Frame::group(ui.style())
+                        .fill(item_fill)
+                        .stroke(egui::Stroke::NONE)
+                        .inner_margin(egui::Margin::same(8))
+                        .corner_radius(egui::CornerRadius::same(8))
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            let expr = ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(&entry.expr).monospace().color(accent),
+                                )
+                                .sense(egui::Sense::click()),
+                            );
+                            if expr.clicked() {
+                                recall_idx = Some(i);
+                            }
+                            expr.on_hover_text("Click to recall this expression");
+                            value_lines(ui, entry.value, entry.sign, base);
+                        });
+                    ui.add_space(6.0);
+                }
+            });
+
+        if let Some(i) = recall_idx {
+            let entry = self.history[i].clone();
+            self.recall(entry);
+        }
+    }
 
     fn controls_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
@@ -274,49 +516,6 @@ impl App {
             self.refresh(None);
         }
     }
-
-    fn expression_bar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label("Expr:");
-            let resp = ui.add(
-                egui::TextEdit::singleline(&mut self.expr)
-                    .font(egui::TextStyle::Monospace)
-                    .desired_width(360.0)
-                    .hint_text("e.g. 0xFF & (1 << 3)"),
-            );
-            let entered =
-                resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if ui.button("=").clicked() || entered {
-                self.eval_expr();
-            }
-        });
-
-        ui.horizontal_wrapped(|ui| {
-            const OPS: &[(&str, &str)] = &[
-                ("AND", " & "),
-                ("OR", " | "),
-                ("XOR", " ^ "),
-                ("NOT", "~"),
-                ("SHL", " << "),
-                ("SHR", " >> "),
-                ("(", "("),
-                (")", ")"),
-                ("+", " + "),
-                ("-", " - "),
-                ("*", " * "),
-                ("/", " / "),
-                ("ans", "ans"),
-            ];
-            for (label, token) in OPS {
-                if ui.button(*label).clicked() {
-                    self.expr.push_str(token);
-                }
-            }
-            if ui.button("Clear").clicked() {
-                self.expr.clear();
-            }
-        });
-    }
 }
 
 impl eframe::App for App {
@@ -343,18 +542,27 @@ impl eframe::App for App {
                 });
                 ui.add_space(8.0);
 
-                Self::section(ui, |ui| self.controls_bar(ui));
+                // The expression field is the centerpiece.
+                Self::section(ui, |ui| self.expression_centerpiece(ui));
+
                 Self::section(ui, |ui| {
+                    section_label(ui, "CURRENT VALUE");
                     self.base_fields(ui);
                     ui.add_space(6.0);
                     self.fixed_point(ui);
                 });
+
+                Self::section(ui, |ui| self.history_panel(ui));
+
                 Self::section(ui, |ui| {
-                    ui.label(egui::RichText::new("BITS  (MSB → LSB)").weak().small());
-                    ui.add_space(4.0);
+                    section_label(ui, "FORMAT");
+                    self.controls_bar(ui);
+                });
+
+                Self::section(ui, |ui| {
+                    section_label(ui, "BITS  (MSB → LSB)");
                     self.bit_grid(ui);
                 });
-                Self::section(ui, |ui| self.expression_bar(ui));
 
                 if let Some(msg) = &self.status {
                     ui.colored_label(egui::Color32::from_rgb(229, 115, 115), msg);
@@ -365,7 +573,47 @@ impl eframe::App for App {
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         storage.set_string("theme_mode", self.theme_mode.key().to_owned());
+        storage.set_string("history_base", self.history_base.key().to_owned());
     }
+}
+
+/// Render a small "weak" section heading.
+fn section_label(ui: &mut egui::Ui, text: &str) {
+    ui.label(egui::RichText::new(text).weak().small());
+    ui.add_space(4.0);
+}
+
+/// Render the result `value` in one base or all four, as click-to-copy lines.
+fn value_lines(ui: &mut egui::Ui, value: Value, sign: Signedness, base: HistoryBase) {
+    match base {
+        HistoryBase::All => {
+            value_line(ui, "HEX", value.to_hex());
+            value_line(ui, "DEC", value.to_dec(sign));
+            value_line(ui, "BIN", value.to_bin());
+            value_line(ui, "OCT", value.to_oct());
+        }
+        HistoryBase::Hex => value_line(ui, "HEX", value.to_hex()),
+        HistoryBase::Dec => value_line(ui, "DEC", value.to_dec(sign)),
+        HistoryBase::Bin => value_line(ui, "BIN", value.to_bin()),
+        HistoryBase::Oct => value_line(ui, "OCT", value.to_oct()),
+    }
+}
+
+/// One labelled, monospace, click-to-copy value line.
+fn value_line(ui: &mut egui::Ui, label: &str, text: String) {
+    ui.horizontal(|ui| {
+        ui.add_sized(
+            [34.0, ui.spacing().interact_size.y],
+            egui::Label::new(egui::RichText::new(label).weak().monospace().small()),
+        );
+        let resp = ui.add(
+            egui::Label::new(egui::RichText::new(&text).monospace()).sense(egui::Sense::click()),
+        );
+        if resp.clicked() {
+            ui.ctx().copy_text(text.clone());
+        }
+        resp.on_hover_text("Click to copy");
+    });
 }
 
 /// Parse a base-field string into a width-masked [`Value`]. Whitespace and `_`
