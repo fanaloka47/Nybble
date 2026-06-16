@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  [data-pc-theme]{
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;
+    --bg:#0f1115; --surface:#171a21; --input:#1c2029; --widget:#252a36;
+    --widget-hover:#303644; --text:#e2e5ee; --text-strong:#f5f7fa;
+    --border:#2d3340; --accent:#818cf8; --accent-soft:rgba(129,140,248,.16);
+    --on-accent:#0f1115; --weak:#8a90a0; --err:#e57373;
+  }
+  [data-pc-theme="light"]{
+    --bg:#f7f8fa; --surface:#ffffff; --input:#ffffff; --widget:#edeff4;
+    --widget-hover:#e2e6ee; --text:#1c2028; --text-strong:#11141a;
+    --border:#d6dae2; --accent:#4f46e5; --accent-soft:rgba(79,70,229,.10);
+    --on-accent:#ffffff; --weak:#6b7280; --err:#dc2626;
+  }
+  @media (prefers-color-scheme: light){
+    [data-pc-theme="auto"]{
+      --bg:#f7f8fa; --surface:#ffffff; --input:#ffffff; --widget:#edeff4;
+      --widget-hover:#e2e6ee; --text:#1c2028; --text-strong:#11141a;
+      --border:#d6dae2; --accent:#4f46e5; --accent-soft:rgba(79,70,229,.10);
+      --on-accent:#ffffff; --weak:#6b7280; --err:#dc2626;
+    }
+  }
+  input{font-family:inherit;color:inherit;}
+  input:focus{outline:none;border-color:var(--accent)!important;}
+  input[type=range]{accent-color:var(--accent);}
+  ::selection{background:var(--accent-soft);}
+</style>
+</helmet>
+<div data-pc-theme="{{ themeMode }}" ref="{{ rootRef }}" style="min-height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);padding:clamp(12px,3vw,28px);-webkit-font-smoothing:antialiased;">
+  <div style="max-width:1100px;margin:0 auto;">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:baseline;gap:11px;">
+        <span style="font-size:clamp(21px,3vw,27px);font-weight:700;letter-spacing:-0.02em;color:var(--text-strong);">PowerCalc</span>
+        <span style="font-size:12px;color:var(--weak);font-family:var(--mono);">FPGA bit calculator</span>
+      </div>
+      <button onClick="{{ cycleTheme }}" style="background:var(--widget);color:var(--text);border:1px solid var(--border);border-radius:9px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:var(--sans);" style-hover="background:var(--widget-hover);">Theme · {{ themeLabel }}</button>
+    </div>
+
+    <!-- EXPRESSION -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:clamp(15px,2vw,20px);margin-bottom:16px;">
+      <span style="font-size:11px;letter-spacing:0.09em;text-transform:uppercase;color:var(--weak);font-weight:600;display:block;margin-bottom:11px;">Expression</span>
+      <div style="display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;">
+        <input value="{{ expr }}" onChange="{{ onExprChange }}" onKeyDown="{{ onExprKey }}" placeholder="0xFF &amp; (1 &lt;&lt; 3)" spellcheck="false" autocomplete="off" style="flex:1 1 260px;min-width:0;background:var(--input);border:1px solid var(--border);border-radius:11px;font-family:var(--mono);font-size:clamp(16px,2.4vw,21px);padding:13px 15px;">
+        <button onClick="{{ evalExpr }}" style="background:var(--accent);color:var(--on-accent);border:none;border-radius:11px;font-weight:700;font-size:15px;padding:0 26px;cursor:pointer;font-family:var(--sans);white-space:nowrap;">Evaluate</button>
+      </div>
+      <sc-if value="{{ exprError }}" hint-placeholder-val="">
+        <div style="color:var(--err);font-family:var(--mono);font-size:13px;margin-top:9px;">{{ exprError }}</div>
+      </sc-if>
+
+      <div style="margin-top:15px;display:flex;flex-direction:column;gap:8px;">
+        
+        
+        
+      </div>
+    </div>
+
+    <!-- TWO COLUMNS -->
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;">
+
+      <!-- COL A -->
+      <div style="flex:1 1 360px;min-width:0;display:flex;flex-direction:column;gap:16px;">
+
+        <!-- CURRENT VALUE -->
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:clamp(15px,2vw,20px);">
+          <span style="font-size:11px;letter-spacing:0.09em;text-transform:uppercase;color:var(--weak);font-weight:600;display:block;margin-bottom:11px;">Current value</span>
+          <div style="display:flex;gap:6px;margin-bottom:11px;flex-wrap:wrap;">
+            <sc-for list="{{ baseChips }}" as="c" hint-placeholder-count="4">
+              <button onClick="{{ c.onClick }}" style="{{ c.style }}">{{ c.label }}</button>
+            </sc-for>
+          </div>
+          <input value="{{ focusValue }}" onChange="{{ onFocusChange }}" spellcheck="false" autocomplete="off" style="width:100%;background:var(--input);border:1px solid var(--border);border-radius:11px;font-family:var(--mono);font-size:clamp(17px,2.4vw,22px);padding:12px 14px;color:var(--text-strong);letter-spacing:0.01em;">
+          <div style="margin-top:12px;display:flex;flex-direction:column;gap:2px;">
+            <sc-for list="{{ miniLines }}" as="m" hint-placeholder-count="3">
+              <div onClick="{{ m.onCopy }}" title="Click to copy" style="display:flex;gap:10px;align-items:center;cursor:pointer;padding:5px 4px;border-radius:7px;" style-hover="background:var(--widget);">
+                <span style="width:34px;flex:0 0 auto;font-size:11px;color:var(--weak);font-family:var(--mono);font-weight:500;">{{ m.label }}</span>
+                <span style="font-family:var(--mono);font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ m.text }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- BITS -->
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:clamp(15px,2vw,20px);">
+          <span style="font-size:11px;letter-spacing:0.09em;text-transform:uppercase;color:var(--weak);font-weight:600;display:block;margin-bottom:11px;">Bits · MSB → LSB</span>
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--weak);font-family:var(--mono);margin-bottom:8px;">
+            <span>bit {{ msbIndex }}</span>
+            <span style="color:var(--accent);font-weight:500;">{{ popcount }} set</span>
+            <span>bit 0</span>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:0;margin-bottom:13px;border-radius:5px;overflow:hidden;">
+            <sc-for list="{{ barSegs }}" as="s" hint-placeholder-count="32">
+              <div onClick="{{ s.onClick }}" title="{{ s.title }}" style="{{ s.style }}"></div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;">
+            <sc-for list="{{ nibbleGroups }}" as="ng" hint-placeholder-count="8">
+              <div style="display:flex;gap:2px;flex:0 0 auto;">
+                <sc-for list="{{ ng.bits }}" as="b" hint-placeholder-count="4">
+                  <div onClick="{{ b.onClick }}" title="{{ b.title }}" style="{{ b.style }}">{{ b.char }}</div>
+                </sc-for>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- COL B -->
+      <div style="flex:1 1 360px;min-width:0;display:flex;flex-direction:column;gap:16px;">
+
+        <!-- FORMAT -->
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:clamp(15px,2vw,20px);">
+          <span style="font-size:11px;letter-spacing:0.09em;text-transform:uppercase;color:var(--weak);font-weight:600;display:block;margin-bottom:11px;">Format</span>
+
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+            <span style="font-size:12px;color:var(--weak);width:46px;flex:0 0 auto;">Width</span>
+            <sc-for list="{{ widthChips }}" as="w" hint-placeholder-count="4">
+              <button onClick="{{ w.onClick }}" style="{{ w.style }}">{{ w.label }}</button>
+            </sc-for>
+            <span onMouseDown="{{ onWidthScrubStart }}" title="Drag left / right to adjust width" style="font-family:var(--mono);font-size:12px;color:var(--accent);min-width:54px;text-align:right;cursor:ew-resize;user-select:none;padding:4px 8px;border-radius:7px;" style-hover="background:var(--widget);">{{ width }}-bit ↔</span>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+            <span style="font-size:12px;color:var(--weak);width:46px;flex:0 0 auto;">Sign</span>
+            <sc-for list="{{ signChips }}" as="s" hint-placeholder-count="2">
+              <button onClick="{{ s.onClick }}" style="{{ s.style }}">{{ s.label }}</button>
+            </sc-for>
+          </div>
+
+          <div style="border-top:1px solid var(--border);padding-top:13px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
+              <span style="font-size:12px;color:var(--weak);">Fixed-point</span>
+              <span style="font-family:var(--mono);font-size:12px;color:var(--accent);">Q{{ qInt }}.{{ fracBits }}</span>
+            </div>
+            <div ref="{{ fracBarRef }}" onMouseDown="{{ onFracBarDown }}" title="Click or drag to set fractional bits" style="position:relative;height:22px;border-radius:11px;overflow:hidden;cursor:col-resize;user-select:none;margin-bottom:10px;background:var(--widget);">
+              <div style="{{ fracFillStyle }}"></div>
+              <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-family:var(--mono);font-weight:500;pointer-events:none;color:var(--text);">{{ fracBits }}/{{ width }}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font-size:11px;color:var(--weak);width:46px;flex:0 0 auto;">real</span>
+              <input value="{{ fixedInput }}" onChange="{{ onFixedChange }}" spellcheck="false" autocomplete="off" style="flex:1;min-width:0;background:var(--input);border:1px solid var(--border);border-radius:9px;font-family:var(--mono);font-size:14px;padding:8px 11px;">
+            </div>
+          </div>
+
+          <div style="border-top:1px solid var(--border);padding-top:13px;margin-top:13px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px;">
+              <span style="font-size:12px;color:var(--weak);">Bit range</span>
+              <span style="font-family:var(--mono);font-size:12px;color:var(--accent);">bits[{{ rangeHi }}:{{ rangeLo }}]</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+              <span style="font-size:11px;color:var(--weak);">hi</span>
+              <input type="number" min="0" max="127" value="{{ rangeHi }}" onChange="{{ onRangeHi }}" style="width:62px;background:var(--input);border:1px solid var(--border);border-radius:8px;font-family:var(--mono);font-size:13px;padding:6px 8px;">
+              <span style="font-size:11px;color:var(--weak);">lo</span>
+              <input type="number" min="0" max="127" value="{{ rangeLo }}" onChange="{{ onRangeLo }}" style="width:62px;background:var(--input);border:1px solid var(--border);border-radius:8px;font-family:var(--mono);font-size:13px;padding:6px 8px;">
+              <span style="font-size:11px;color:var(--weak);">({{ rangeWidth }} bits)</span>
+            </div>
+            <div onClick="{{ copyRange }}" title="Click to copy hex" style="display:flex;gap:14px;align-items:baseline;cursor:pointer;font-family:var(--mono);background:var(--input);border:1px solid var(--border);border-radius:9px;padding:9px 12px;flex-wrap:wrap;">
+              <span style="font-size:15px;color:var(--text-strong);font-weight:500;">{{ extractHex }}</span>
+              <span style="font-size:12px;color:var(--weak);">{{ extractDec }}</span>
+              <span style="font-size:12px;color:var(--weak);">{{ extractBin }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- HISTORY -->
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:clamp(15px,2vw,20px);">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:11px;flex-wrap:wrap;">
+            <span style="font-size:11px;letter-spacing:0.09em;text-transform:uppercase;color:var(--weak);font-weight:600;">History</span>
+            <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;">
+              <sc-for list="{{ histBaseChips }}" as="c" hint-placeholder-count="5">
+                <button onClick="{{ c.onClick }}" style="{{ c.style }}">{{ c.label }}</button>
+              </sc-for>
+              <button onClick="{{ clearHistory }}" style="background:transparent;color:var(--weak);border:1px solid var(--border);border-radius:7px;padding:5px 9px;cursor:pointer;font-size:11px;font-family:var(--sans);margin-left:4px;" style-hover="color:var(--err);">Clear</button>
+            </div>
+          </div>
+
+          <sc-if value="{{ noHistory }}" hint-placeholder-val="{{ true }}">
+            <div style="color:var(--weak);font-size:13px;padding:8px 2px;">No expressions yet — type one above and press Enter.</div>
+          </sc-if>
+          <sc-if value="{{ hasHistory }}" hint-placeholder-val="">
+            <div style="display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;">
+              <sc-for list="{{ historyItems }}" as="h" hint-placeholder-count="3">
+                <div style="background:var(--input);border:1px solid var(--border);border-radius:10px;padding:10px 12px;">
+                  <div onClick="{{ h.onRecall }}" title="Click to recall" style="font-family:var(--mono);font-size:14px;color:var(--accent);cursor:pointer;margin-bottom:6px;word-break:break-all;">{{ h.expr }}</div>
+                  <sc-for list="{{ h.lines }}" as="l" hint-placeholder-count="1">
+                    <div onClick="{{ l.onCopy }}" title="Click to copy" style="display:flex;gap:9px;align-items:baseline;cursor:pointer;padding:1px 0;">
+                      <span style="width:32px;flex:0 0 auto;font-size:10px;color:var(--weak);font-family:var(--mono);">{{ l.label }}</span>
+                      <span style="font-family:var(--mono);font-size:12px;color:var(--text);word-break:break-all;">{{ l.text }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <sc-if value="{{ status }}" hint-placeholder-val="">
+    <div style="position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--text-strong);color:var(--bg);font-family:var(--mono);font-size:13px;padding:9px 16px;border-radius:9px;box-shadow:0 6px 24px rgba(0,0,0,.25);z-index:50;">{{ status }}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:820},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#818cf8&quot;},&quot;defaultTheme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;auto&quot;,&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;auto&quot;}}">
+class Component extends DCLogic {
+  rootRef = React.createRef();
+  fracBarRef = React.createRef();
+  _scrubX = 0;
+  _scrubW = 0;
+
+  state = {
+    raw: 0n,
+    width: 32,
+    signed: false,
+    fracBits: 0,
+    customWidth: 32,
+    expr: "",
+    exprError: null,
+    status: null,
+    focusBase: "hex",
+    hex: "0x0000 0000",
+    dec: "0",
+    bin: "0000 0000 0000 0000 0000 0000 0000 0000",
+    oct: "0o0",
+    fixedInput: "0",
+    history: [],
+    historyBase: "all",
+    themeMode: (this.props && this.props.defaultTheme) || "auto",
+    rangeHi: 7,
+    rangeLo: 0,
+  };
+
+  componentDidMount() {
+    this.applyAccent();
+    // Seed buffers from the initial value so formatting is exact.
+    this.setValue(0n, null);
+  }
+  componentDidUpdate(prev) {
+    if (prev.accent !== this.props.accent) this.applyAccent();
+  }
+  applyAccent() {
+    const el = this.rootRef.current;
+    const a = this.props && this.props.accent;
+    if (!el || !a) return;
+    const { r, g, b } = this.parseHex(a);
+    el.style.setProperty("--accent", a);
+    el.style.setProperty("--accent-soft", `rgba(${r},${g},${b},0.16)`);
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    el.style.setProperty("--on-accent", lum > 140 ? "#0f1115" : "#ffffff");
+  }
+  parseHex(h) {
+    h = String(h).replace("#", "");
+    if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+    return {
+      r: parseInt(h.slice(0, 2), 16) || 0,
+      g: parseInt(h.slice(2, 4), 16) || 0,
+      b: parseInt(h.slice(4, 6), 16) || 0,
+    };
+  }
+
+  // --- value math ---
+  normalize(raw, width) {
+    const m = 1n << BigInt(width);
+    return ((raw % m) + m) % m;
+  }
+  asSigned(raw, width, signed) {
+    if (signed && ((raw >> BigInt(width - 1)) & 1n) === 1n)
+      return raw - (1n << BigInt(width));
+    return raw;
+  }
+  group(s, size) {
+    if (s.length <= size) return s;
+    let out = "", c = 0;
+    for (let i = s.length - 1; i >= 0; i--) {
+      out = s[i] + out;
+      if (++c % size === 0 && i !== 0) out = " " + out;
+    }
+    return out;
+  }
+  fmtHex(raw, width) {
+    const digits = Math.ceil(width / 4);
+    const body = raw.toString(16).toUpperCase().padStart(digits, "0");
+    return "0x" + this.group(body, 4);
+  }
+  fmtBin(raw, width) {
+    return this.group(raw.toString(2).padStart(width, "0"), 4);
+  }
+  fmtOct(raw) { return "0o" + raw.toString(8); }
+  fmtDec(raw, width, signed) {
+    return this.asSigned(raw, width, signed).toString();
+  }
+  fmtFixed(raw, width, signed, frac) {
+    const sv = this.asSigned(raw, width, signed);
+    const real = Number(sv) / Math.pow(2, frac);
+    return String(real);
+  }
+  buffersFor(raw, width, signed, frac) {
+    return {
+      hex: this.fmtHex(raw, width),
+      dec: this.fmtDec(raw, width, signed),
+      bin: this.fmtBin(raw, width),
+      oct: this.fmtOct(raw),
+      fixedInput: this.fmtFixed(raw, width, signed, frac),
+    };
+  }
+  setValue(raw, skip) {
+    this.setState((s) => {
+      const b = this.buffersFor(raw, s.width, s.signed, s.fracBits);
+      if (skip) {
+        const key = skip === "fixed" ? "fixedInput" : skip;
+        delete b[key];
+      }
+      return { raw, status: null, ...b };
+    });
+  }
+
+  // --- parsing ---
+  parseBaseText(text, radix) {
+    const cleaned = [...text].filter((c) => !/\s/.test(c) && c !== "_").join("");
+    const { width, signed } = this.state;
+    if (cleaned === "") return 0n;
+    if (radix === 10) {
+      if (cleaned[0] === "-") {
+        if (!signed) throw new Error("negative value in unsigned mode");
+        return this.normalize(-BigInt(cleaned.slice(1)), width);
+      }
+      return this.normalize(BigInt(cleaned), width);
+    }
+    const pre = { 16: "0x", 2: "0b", 8: "0o" }[radix];
+    let body = cleaned;
+    if (body.slice(0, 2).toLowerCase() === pre) body = body.slice(2);
+    if (body === "") return 0n;
+    return this.normalize(BigInt(pre + body), width);
+  }
+
+  onFieldEdit(field, text) {
+    const key = field === "fixed" ? "fixedInput" : field;
+    this.setState({ [key]: text });
+    if (field === "fixed") return this.onFixedEdit(text);
+    const radix = { hex: 16, dec: 10, bin: 2, oct: 8 }[field];
+    try {
+      const raw = this.parseBaseText(text, radix);
+      this.setValue(raw, field);
+    } catch (e) {
+      this.setState({ status: e.message });
+    }
+  }
+  onFixedEdit(text) {
+    const t = text.trim();
+    if (t === "") return;
+    const r = Number(t);
+    if (Number.isNaN(r)) { this.setState({ status: "invalid real number" }); return; }
+    this.setState((s) => {
+      const raw = this.normalize(BigInt(Math.round(r * Math.pow(2, s.fracBits))), s.width);
+      const b = this.buffersFor(raw, s.width, s.signed, s.fracBits);
+      delete b.fixedInput;
+      return { raw, status: null, ...b };
+    });
+  }
+
+  // --- expression evaluation ---
+  tokenize(s) {
+    const toks = [];
+    let i = 0;
+    while (i < s.length) {
+      const c = s[i];
+      if (/\s/.test(c)) { i++; continue; }
+      if (c === "<" && s[i + 1] === "<") { toks.push({ t: "op", v: "<<" }); i += 2; continue; }
+      if (c === ">" && s[i + 1] === ">") { toks.push({ t: "op", v: ">>" }); i += 2; continue; }
+      if ("&|^~+-*/()".includes(c)) { toks.push({ t: "op", v: c }); i++; continue; }
+      if (/[0-9]/.test(c)) {
+        let j = i;
+        if (c === "0" && /[xX]/.test(s[i + 1] || "")) { j = i + 2; while (j < s.length && /[0-9a-fA-F_]/.test(s[j])) j++; }
+        else if (c === "0" && /[bB]/.test(s[i + 1] || "")) { j = i + 2; while (j < s.length && /[01_]/.test(s[j])) j++; }
+        else if (c === "0" && /[oO]/.test(s[i + 1] || "")) { j = i + 2; while (j < s.length && /[0-7_]/.test(s[j])) j++; }
+        else { while (j < s.length && /[0-9_]/.test(s[j])) j++; }
+        const raw = s.slice(i, j).replace(/_/g, "");
+        toks.push({ t: "num", v: BigInt(raw) });
+        i = j; continue;
+      }
+      if (/[a-zA-Z]/.test(c)) {
+        let j = i;
+        while (j < s.length && /[a-zA-Z]/.test(s[j])) j++;
+        const id = s.slice(i, j).toLowerCase();
+        if (id === "ans") toks.push({ t: "ans" });
+        else throw new Error("unknown identifier '" + id + "'");
+        i = j; continue;
+      }
+      throw new Error("unexpected character '" + c + "'");
+    }
+    return toks;
+  }
+  evaluate(expr, width, signed, ans) {
+    const toks = this.tokenize(expr);
+    let pos = 0;
+    const norm = (v) => this.normalize(v, width);
+    const sgn = (v) => this.asSigned(v, width, signed);
+    const peek = () => toks[pos];
+    const eat = (v) => { const t = toks[pos]; if (!t || t.v !== v) throw new Error("expected '" + v + "'"); pos++; };
+    function primary() {
+      const t = peek();
+      if (!t) throw new Error("unexpected end of expression");
+      if (t.t === "num") { pos++; return norm(t.v); }
+      if (t.t === "ans") { pos++; return norm(ans); }
+      if (t.t === "op" && t.v === "(") { pos++; const v = orE(); eat(")"); return v; }
+      throw new Error("unexpected token '" + (t.v != null ? t.v : t.t) + "'");
+    }
+    function unary() {
+      const t = peek();
+      if (t && t.t === "op" && t.v === "~") { pos++; return norm(~unary()); }
+      if (t && t.t === "op" && t.v === "-") { pos++; return norm(-sgn(unary())); }
+      if (t && t.t === "op" && t.v === "+") { pos++; return unary(); }
+      return primary();
+    }
+    function mul() {
+      let l = unary();
+      while (peek() && peek().t === "op" && (peek().v === "*" || peek().v === "/")) {
+        const op = peek().v; pos++; const r = unary();
+        if (op === "*") l = norm(l * r);
+        else { if (r === 0n) throw new Error("division by zero"); l = signed ? norm(sgn(l) / sgn(r)) : norm(l / r); }
+      }
+      return l;
+    }
+    function add() {
+      let l = mul();
+      while (peek() && peek().t === "op" && (peek().v === "+" || peek().v === "-")) {
+        const op = peek().v; pos++; const r = mul();
+        l = op === "+" ? norm(l + r) : norm(l - r);
+      }
+      return l;
+    }
+    function shift() {
+      let l = add();
+      while (peek() && peek().t === "op" && (peek().v === "<<" || peek().v === ">>")) {
+        const op = peek().v; pos++; const r = add();
+        const amt = r > BigInt(width) ? BigInt(width) : r;
+        if (op === "<<") l = norm(l << amt);
+        else l = signed ? norm(sgn(l) >> amt) : norm(l >> amt);
+      }
+      return l;
+    }
+    function andE() { let l = shift(); while (peek() && peek().t === "op" && peek().v === "&") { pos++; l = norm(l & shift()); } return l; }
+    function xorE() { let l = andE(); while (peek() && peek().t === "op" && peek().v === "^") { pos++; l = norm(l ^ andE()); } return l; }
+    function orE() { let l = xorE(); while (peek() && peek().t === "op" && peek().v === "|") { pos++; l = norm(l | xorE()); } return l; }
+    const result = orE();
+    if (pos !== toks.length) throw new Error("unexpected token '" + (peek().v != null ? peek().v : peek().t) + "'");
+    return result;
+  }
+  evalExpr() {
+    const expr = this.state.expr;
+    const t = expr.trim();
+    if (t === "") return;
+    this.setState((s) => {
+      try {
+        const raw = this.evaluate(expr, s.width, s.signed, s.raw);
+        const b = this.buffersFor(raw, s.width, s.signed, s.fracBits);
+        const history = [...s.history, { expr: t, raw, width: s.width, signed: s.signed }].slice(-200);
+        return { raw, history, exprError: null, status: null, ...b };
+      } catch (e) {
+        return { exprError: "Invalid expression: " + e.message };
+      }
+    });
+  }
+
+  // --- mutations ---
+  setWidth(bits) {
+    this.setState((s) => {
+      const width = Math.max(1, Math.min(128, bits | 0));
+      const raw = this.normalize(s.raw, width);
+      const frac = Math.min(s.fracBits, width);
+      return { width, customWidth: width, fracBits: frac, raw, ...this.buffersFor(raw, width, s.signed, frac) };
+    });
+  }
+  setSign(signed) {
+    this.setState((s) => ({ signed, ...this.buffersFor(s.raw, s.width, signed, s.fracBits) }));
+  }
+  setFrac(frac) {
+    this.setState((s) => {
+      const f = Math.max(0, Math.min(s.width, frac | 0));
+      return { fracBits: f, fixedInput: this.fmtFixed(s.raw, s.width, s.signed, f) };
+    });
+  }
+  toggleBit(b) {
+    this.setState((s) => {
+      const raw = this.normalize(s.raw ^ (1n << BigInt(b)), s.width);
+      return { raw, status: null, ...this.buffersFor(raw, s.width, s.signed, s.fracBits) };
+    });
+  }
+  recall(e) {
+    this.setState((s) => {
+      const raw = this.normalize(e.raw, e.width);
+      const frac = Math.min(s.fracBits, e.width);
+      return { raw, width: e.width, signed: e.signed, customWidth: e.width, fracBits: frac, expr: e.expr, exprError: null, status: null, ...this.buffersFor(raw, e.width, e.signed, frac) };
+    });
+  }
+  append(tok) { this.setState((s) => ({ expr: s.expr + tok, exprError: null })); }
+  cycleTheme() {
+    this.setState((s) => ({ themeMode: { auto: "light", light: "dark", dark: "auto" }[s.themeMode] }));
+  }
+  onWidthScrubStart(e) {
+    this._scrubX = e.clientX;
+    this._scrubW = this.state.width;
+    const onMove = (e2) => {
+      const delta = Math.round((e2.clientX - this._scrubX) / 3);
+      this.setWidth(this._scrubW + delta);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    e.preventDefault();
+  }
+
+  onFracBarDown(e) {
+    const el = this.fracBarRef.current;
+    if (!el) return;
+    const update = (e2) => {
+      const rect = el.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (e2.clientX - rect.left) / rect.width));
+      this.setFrac(Math.round(ratio * this.state.width));
+    };
+    update(e);
+    const onMove = (e2) => update(e2);
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    e.preventDefault();
+  }
+
+  copy(text, label) {
+    if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {});
+    clearTimeout(this._statusT);
+    this.setState({ status: "Copied " + (label || "") });
+    this._statusT = setTimeout(() => this.setState({ status: null }), 1400);
+  }
+  setRange(which, val) {
+    const n = Math.max(0, Math.min(this.state.width - 1, parseInt(val, 10) || 0));
+    this.setState({ [which]: n });
+  }
+
+  popcountBig(raw) {
+    let c = 0, v = raw;
+    while (v > 0n) { c += Number(v & 1n); v >>= 1n; }
+    return c;
+  }
+
+  renderVals() {
+    const s = this.state;
+    const { raw, width, signed } = s;
+    const themeLabel = { auto: "Auto", light: "Light", dark: "Dark" }[s.themeMode];
+
+    // op buttons
+    const mkOps = (arr) => arr.map(([label, token]) => ({ label, onClick: () => this.append(token) }));
+    const bitwiseOps = mkOps([["AND", " & "], ["OR", " | "], ["XOR", " ^ "], ["NOT", "~"], ["SHL", " << "], ["SHR", " >> "]]);
+    const arithOps = mkOps([["+", " + "], ["−", " - "], ["×", " * "], ["÷", " / "]]);
+    const miscOps = mkOps([["(", "("], [")", ")"], ["ans", "ans"]]);
+
+    // base chips + focused field
+    const chipBase = "border-radius:8px;padding:6px 13px;cursor:pointer;font-family:var(--mono);font-size:13px;font-weight:500;border:1px solid transparent;";
+    const chipOn = chipBase + "background:var(--accent-soft);border-color:var(--accent);color:var(--accent);";
+    const chipOff = chipBase + "background:var(--widget);color:var(--text);";
+    const FIELDS = [["hex", "HEX"], ["dec", "DEC"], ["bin", "BIN"], ["oct", "OCT"]];
+    const baseChips = FIELDS.map(([f, label]) => ({
+      label, style: s.focusBase === f ? chipOn : chipOff, onClick: () => this.setState({ focusBase: f }),
+    }));
+    const focusValue = s[s.focusBase];
+    const onFocusChange = (e) => this.onFieldEdit(s.focusBase, e.target.value);
+    const miniLines = FIELDS.filter(([f]) => f !== s.focusBase).map(([f, label]) => ({
+      label, text: s[f], onCopy: () => this.copy(s[f], label),
+    }));
+
+    // width / sign chips
+    const smChip = "border-radius:7px;padding:5px 12px;cursor:pointer;font-family:var(--mono);font-size:13px;border:1px solid transparent;";
+    const smOn = smChip + "background:var(--accent-soft);border-color:var(--accent);color:var(--accent);";
+    const smOff = smChip + "background:var(--widget);color:var(--text);";
+    const widthChips = [8, 16, 32, 64].map((bits) => ({
+      label: String(bits), style: width === bits ? smOn : smOff, onClick: () => this.setWidth(bits),
+    }));
+    const signChips = [["unsigned", false], ["signed", true]].map(([label, val]) => ({
+      label, style: signed === val ? smOn : smOff, onClick: () => this.setSign(val),
+    }));
+
+    // bits
+    const onAccent = "background:var(--accent);color:var(--on-accent);border:1px solid var(--accent);";
+    const offCell = "background:var(--input);color:var(--weak);border:1px solid var(--border);";
+    // Build individual bit objects MSB → LSB, then group into nibbles of 4
+    const allBits = [];
+    const barSegs = [];
+    for (let b = width - 1; b >= 0; b--) {
+      const set = ((raw >> BigInt(b)) & 1n) === 1n;
+      allBits.push({
+        char: set ? "1" : "0",
+        title: "bit " + b,
+        onClick: () => this.toggleBit(b),
+        style: "display:flex;align-items:center;justify-content:center;width:clamp(22px,4.4vw,28px);height:28px;border-radius:6px;font-family:var(--mono);font-size:12px;cursor:pointer;user-select:none;flex:0 0 auto;" + (set ? onAccent : offCell),
+      });
+      const bgap = (b % 4 === 0 && b !== 0) ? "4px" : "0px";
+      barSegs.push({
+        title: "bit " + b,
+        onClick: () => this.toggleBit(b),
+        style: "flex:1 1 0;min-width:3px;height:13px;cursor:pointer;margin-right:" + bgap + ";" + (set ? "background:var(--accent);" : "background:var(--widget);"),
+      });
+    }
+    // Pack into non-breaking nibble groups (MSB group may have < 4 bits if width % 4 != 0)
+    const nibbleGroups = [];
+    for (let i = 0; i < allBits.length; i += 4) {
+      nibbleGroups.push({ bits: allBits.slice(i, i + 4) });
+    }
+
+    // bit range extraction
+    let hi = Math.min(Math.max(0, s.rangeHi), width - 1);
+    let lo = Math.min(Math.max(0, s.rangeLo), width - 1);
+    if (lo > hi) { const t = hi; hi = lo; lo = t; }
+    const rangeWidth = hi - lo + 1;
+    const fmask = (1n << BigInt(rangeWidth)) - 1n;
+    const fieldVal = (raw >> BigInt(lo)) & fmask;
+    const extractHex = "0x" + fieldVal.toString(16).toUpperCase();
+    const extractDec = fieldVal.toString();
+    const extractBin = "0b" + fieldVal.toString(2).padStart(rangeWidth, "0");
+
+    // history
+    const histChip = "border-radius:6px;padding:4px 9px;cursor:pointer;font-family:var(--mono);font-size:11px;border:1px solid transparent;";
+    const HB = [["all", "All"], ["hex", "HEX"], ["dec", "DEC"], ["bin", "BIN"], ["oct", "OCT"]];
+    const histBaseChips = HB.map(([k, label]) => ({
+      label,
+      style: histChip + (s.historyBase === k ? "background:var(--accent-soft);border-color:var(--accent);color:var(--accent);" : "background:var(--widget);color:var(--text);"),
+      onClick: () => this.setState({ historyBase: k }),
+    }));
+    const lineDefs = { hex: ["HEX"], dec: ["DEC"], bin: ["BIN"], oct: ["OCT"], all: ["HEX", "DEC", "BIN", "OCT"] };
+    const valFor = (e, label) => {
+      if (label === "HEX") return this.fmtHex(e.raw, e.width);
+      if (label === "DEC") return this.fmtDec(e.raw, e.width, e.signed);
+      if (label === "BIN") return this.fmtBin(e.raw, e.width);
+      return this.fmtOct(e.raw);
+    };
+    const historyItems = s.history.map((e, idx) => ({
+      key: idx,
+      expr: e.expr,
+      onRecall: () => this.recall(e),
+      lines: lineDefs[s.historyBase].map((label) => {
+        const text = valFor(e, label);
+        return { label, text, onCopy: () => this.copy(text, label) };
+      }),
+    })).reverse();
+
+    return {
+      rootRef: this.rootRef,
+      themeMode: s.themeMode,
+      themeLabel,
+      cycleTheme: () => this.cycleTheme(),
+      // expression
+      expr: s.expr,
+      exprError: s.exprError,
+      onExprChange: (e) => this.setState({ expr: e.target.value, exprError: null }),
+      onExprKey: (e) => { if (e.key === "Enter") this.evalExpr(); },
+      evalExpr: () => this.evalExpr(),
+      clearExpr: () => this.setState({ expr: "", exprError: null }),
+      bitwiseOps, arithOps, miscOps,
+      // current value
+      baseChips, focusValue, onFocusChange, miniLines,
+      // format
+      width, customWidth: s.customWidth,
+      onWidthSlider: (e) => this.setWidth(parseInt(e.target.value, 10)),
+      onWidthScrubStart: (e) => this.onWidthScrubStart(e),
+      fracBarRef: this.fracBarRef,
+      onFracBarDown: (e) => this.onFracBarDown(e),
+      fracFillStyle: `height:100%;border-radius:11px;background:var(--accent);opacity:0.72;width:${width === 0 ? 0 : Math.round(s.fracBits / width * 100)}%;transition:width 60ms ease;`,
+      widthChips, signChips,
+      fracBits: s.fracBits, qInt: width - s.fracBits,
+      onFracSlider: (e) => this.setFrac(parseInt(e.target.value, 10)),
+      fixedInput: s.fixedInput,
+      onFixedChange: (e) => this.onFieldEdit("fixed", e.target.value),
+      // bit range
+      rangeHi: hi, rangeLo: lo, rangeWidth,
+      onRangeHi: (e) => this.setRange("rangeHi", e.target.value),
+      onRangeLo: (e) => this.setRange("rangeLo", e.target.value),
+      extractHex, extractDec, extractBin,
+      copyRange: () => this.copy(extractHex, "field"),
+      // bits
+      nibbleGroups, barSegs, msbIndex: width - 1, popcount: this.popcountBig(raw),
+      // history
+      histBaseChips,
+      historyItems,
+      hasHistory: s.history.length > 0 ? true : "",
+      noHistory: s.history.length === 0 ? true : "",
+      clearHistory: () => this.setState({ history: [] }),
+      // status
+      status: s.status,
+    };
+  }
+}
+</script>
+</body>
+</html>
