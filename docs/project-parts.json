@@ -1,0 +1,34 @@
+{
+  "repository_type": "monorepo",
+  "workspace_manifest": "Cargo.toml",
+  "parts": [
+    {
+      "part_id": "core",
+      "crate_name": "powercalc-core",
+      "lib_name": "powercalc_core",
+      "project_type_id": "library",
+      "root_path": "crates/core",
+      "kind": "lib",
+      "dependencies": [],
+      "description": "Pure, UI-free numeric core: value model, ops, parsing, expression evaluator, fixed-point. Carries all 35 unit tests."
+    },
+    {
+      "part_id": "gui",
+      "crate_name": "powercalc-gui",
+      "binary_name": "powercalc",
+      "project_type_id": "desktop",
+      "root_path": "crates/gui",
+      "kind": "bin",
+      "dependencies": ["powercalc-core", "eframe 0.34", "egui 0.34"],
+      "description": "eframe/egui immediate-mode desktop app over powercalc-core. Glow (OpenGL) backend; x11 + wayland; persistence for theme/history-base."
+    }
+  ],
+  "integration_points": [
+    {
+      "from": "gui",
+      "to": "core",
+      "type": "Cargo path dependency (in-process)",
+      "details": "powercalc-core = { path = \"../core\" }; app.rs calls eval, fixed::to_real/from_real, Value methods. One-way dependency."
+    }
+  ]
+}
