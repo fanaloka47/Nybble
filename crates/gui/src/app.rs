@@ -98,6 +98,9 @@ pub struct App {
     fixed_input: String,
     expr: String,
 
+    /// Which base is shown large and editable in the compact current-value view.
+    focus_base: Field,
+
     history: Vec<HistoryEntry>,
     history_base: HistoryBase,
 
@@ -133,6 +136,7 @@ impl App {
             oct: String::new(),
             fixed_input: String::new(),
             expr: String::new(),
+            focus_base: Field::Hex,
             history: Vec::new(),
             history_base,
             expr_error: None,
@@ -348,25 +352,31 @@ impl App {
     }
 
     fn history_panel(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            section_label(ui, "HISTORY");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Clear").clicked() {
-                    self.history.clear();
-                }
-                ui.separator();
-                for base in HistoryBase::ALL.into_iter().rev() {
-                    if ui
-                        .selectable_label(self.history_base == base, base.label())
-                        .clicked()
-                    {
-                        self.history_base = base;
-                    }
-                }
+        egui::CollapsingHeader::new(egui::RichText::new("HISTORY").strong())
+            .default_open(true)
+            .show_unindented(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("Clear").clicked() {
+                            self.history.clear();
+                        }
+                        ui.separator();
+                        for base in HistoryBase::ALL.into_iter().rev() {
+                            if ui
+                                .selectable_label(self.history_base == base, base.label())
+                                .clicked()
+                            {
+                                self.history_base = base;
+                            }
+                        }
+                    });
+                });
+                ui.add_space(4.0);
+                self.history_list(ui);
             });
-        });
-        ui.add_space(4.0);
+    }
 
+    fn history_list(&mut self, ui: &mut egui::Ui) {
         if self.history.is_empty() {
             ui.label(
                 egui::RichText::new("No expressions evaluated yet — type one above and press Enter.")
@@ -416,7 +426,7 @@ impl App {
     }
 
     fn controls_bar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Width:");
             for bits in [8u32, 16, 32, 64] {
                 if ui
@@ -426,15 +436,17 @@ impl App {
                     self.set_width(bits);
                 }
             }
-            ui.separator();
             ui.label("custom");
             let mut custom = self.custom_width;
-            if ui.add(egui::Slider::new(&mut custom, 1..=128)).changed() {
+            if ui
+                .add(egui::Slider::new(&mut custom, 1..=128))
+                .changed()
+            {
                 self.set_width(custom);
             }
         });
 
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Sign:");
             if ui
                 .selectable_label(self.sign == Signedness::Unsigned, "unsigned")
@@ -451,20 +463,25 @@ impl App {
         });
     }
 
-    fn base_fields(&mut self, ui: &mut egui::Ui) {
-        egui::Grid::new("bases")
-            .num_columns(2)
-            .spacing([12.0, 8.0])
-            .show(ui, |ui| {
-                self.base_row(ui, "HEX", Field::Hex);
-                self.base_row(ui, "DEC", Field::Dec);
-                self.base_row(ui, "BIN", Field::Bin);
-                self.base_row(ui, "OCT", Field::Oct);
-            });
-    }
+    /// Compact current value: a base selector, the selected base shown large
+    /// and editable, and the other three bases as small click-to-copy lines.
+    fn current_value_compact(&mut self, ui: &mut egui::Ui) {
+        section_label(ui, "CURRENT VALUE");
 
-    fn base_row(&mut self, ui: &mut egui::Ui, label: &str, field: Field) {
-        ui.label(egui::RichText::new(label).strong());
+        ui.horizontal(|ui| {
+            for field in BASE_FIELDS {
+                if ui
+                    .selectable_label(self.focus_base == field, field_label(field))
+                    .clicked()
+                {
+                    self.focus_base = field;
+                }
+            }
+        });
+        ui.add_space(4.0);
+
+        // The selected base, large and editable — still drives every other view.
+        let field = self.focus_base;
         let buf = match field {
             Field::Hex => &mut self.hex,
             Field::Dec => &mut self.dec,
@@ -474,18 +491,34 @@ impl App {
         };
         let resp = ui.add(
             egui::TextEdit::singleline(buf)
-                .font(egui::TextStyle::Monospace)
-                .desired_width(420.0),
+                .font(egui::FontId::new(20.0, egui::FontFamily::Monospace))
+                .desired_width(f32::INFINITY)
+                .margin(egui::vec2(8.0, 6.0)),
         );
-        ui.end_row();
         if resp.changed() {
             self.on_field_edit(field);
+        }
+        ui.add_space(6.0);
+
+        // The other three bases, small and read-only (click to copy).
+        for other in BASE_FIELDS {
+            if other == field {
+                continue;
+            }
+            let text = match other {
+                Field::Hex => self.hex.clone(),
+                Field::Dec => self.dec.clone(),
+                Field::Bin => self.bin.clone(),
+                Field::Oct => self.oct.clone(),
+                Field::Fixed => unreachable!(),
+            };
+            mini_value_line(ui, field_label(other), text);
         }
     }
 
     fn fixed_point(&mut self, ui: &mut egui::Ui) {
         let wbits = self.width.bits();
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             let int_bits = wbits.saturating_sub(self.frac_bits);
             ui.label(format!("Fixed-point  Q{int_bits}.{}", self.frac_bits));
             if ui
@@ -495,12 +528,12 @@ impl App {
                 self.refresh(None);
             }
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Real:");
             let resp = ui.add(
                 egui::TextEdit::singleline(&mut self.fixed_input)
                     .font(egui::TextStyle::Monospace)
-                    .desired_width(220.0),
+                    .desired_width(180.0),
             );
             if resp.changed() {
                 self.on_fixed_edit();
@@ -542,26 +575,24 @@ impl eframe::App for App {
                 });
                 ui.add_space(8.0);
 
-                // The expression field is the centerpiece.
-                Self::section(ui, |ui| self.expression_centerpiece(ui));
+                // Two columns. Left: the expression centerpiece and the
+                // history below it. Right: the current value, format controls,
+                // and the bit grid.
+                ui.columns(2, |cols| {
+                    Self::section(&mut cols[0], |ui| self.expression_centerpiece(ui));
+                    Self::section(&mut cols[0], |ui| self.history_panel(ui));
 
-                Self::section(ui, |ui| {
-                    section_label(ui, "CURRENT VALUE");
-                    self.base_fields(ui);
-                    ui.add_space(6.0);
-                    self.fixed_point(ui);
-                });
-
-                Self::section(ui, |ui| self.history_panel(ui));
-
-                Self::section(ui, |ui| {
-                    section_label(ui, "FORMAT");
-                    self.controls_bar(ui);
-                });
-
-                Self::section(ui, |ui| {
-                    section_label(ui, "BITS  (MSB → LSB)");
-                    self.bit_grid(ui);
+                    Self::section(&mut cols[1], |ui| self.current_value_compact(ui));
+                    Self::section(&mut cols[1], |ui| {
+                        section_label(ui, "FORMAT");
+                        self.controls_bar(ui);
+                        ui.add_space(6.0);
+                        self.fixed_point(ui);
+                    });
+                    Self::section(&mut cols[1], |ui| {
+                        section_label(ui, "BITS  (MSB → LSB)");
+                        self.bit_grid(ui);
+                    });
                 });
 
                 if let Some(msg) = &self.status {
@@ -577,10 +608,40 @@ impl eframe::App for App {
     }
 }
 
+/// The four base fields, in display order.
+const BASE_FIELDS: [Field; 4] = [Field::Hex, Field::Dec, Field::Bin, Field::Oct];
+
+fn field_label(field: Field) -> &'static str {
+    match field {
+        Field::Hex => "HEX",
+        Field::Dec => "DEC",
+        Field::Bin => "BIN",
+        Field::Oct => "OCT",
+        Field::Fixed => "FIX",
+    }
+}
+
 /// Render a small "weak" section heading.
 fn section_label(ui: &mut egui::Ui, text: &str) {
     ui.label(egui::RichText::new(text).weak().small());
     ui.add_space(4.0);
+}
+
+/// A small, weak, click-to-copy base line for the compact current-value view.
+fn mini_value_line(ui: &mut egui::Ui, label: &str, text: String) {
+    let resp = ui.add(
+        egui::Label::new(
+            egui::RichText::new(format!("{label}  {text}"))
+                .monospace()
+                .small()
+                .weak(),
+        )
+        .sense(egui::Sense::click()),
+    );
+    if resp.clicked() {
+        ui.ctx().copy_text(text);
+    }
+    resp.on_hover_text("Click to copy");
 }
 
 /// Render the result `value` in one base or all four, as click-to-copy lines.
