@@ -321,6 +321,7 @@ impl App {
                     .hint_text("0xFF & (1 << 3)")
                     .margin(egui::vec2(10.0, 8.0)),
             );
+            paint_input_stripe(ui, resp.rect, accent);
             // Editing the expression clears any stale "invalid" message — we
             // only validate at evaluate time, never while typing.
             if resp.changed() {
@@ -505,6 +506,8 @@ impl App {
     fn current_value_compact(&mut self, ui: &mut egui::Ui) {
         section_label(ui, "CURRENT VALUE");
 
+        let accent = theme::accent(ui.ctx());
+
         ui.horizontal(|ui| {
             for field in BASE_FIELDS {
                 if ui
@@ -532,6 +535,7 @@ impl App {
                 .desired_width(f32::INFINITY)
                 .margin(egui::vec2(8.0, 6.0)),
         );
+        paint_input_stripe(ui, resp.rect, accent);
         if resp.changed() {
             self.on_field_edit(field);
         }
@@ -627,6 +631,7 @@ impl App {
                     .font(egui::TextStyle::Monospace)
                     .desired_width(f32::INFINITY),
             );
+            paint_input_stripe(ui, resp.rect, accent);
             if resp.changed() {
                 self.on_fixed_edit();
             }
@@ -843,6 +848,16 @@ fn field_label(field: Field) -> &'static str {
         Field::Oct => "OCT",
         Field::Fixed => "FIX",
     }
+}
+
+/// Paint a 3 px accent-colored stripe on the left edge of `rect` to mark the
+/// field as an editable input.
+fn paint_input_stripe(ui: &mut egui::Ui, rect: egui::Rect, accent: egui::Color32) {
+    ui.painter().rect_filled(
+        egui::Rect::from_min_max(rect.left_top(), egui::pos2(rect.left() + 3.0, rect.bottom())),
+        egui::CornerRadius::same(2),
+        accent,
+    );
 }
 
 /// Render a small "weak" section heading.
