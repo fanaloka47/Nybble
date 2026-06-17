@@ -758,6 +758,18 @@ impl eframe::App for App {
                             .weak()
                             .small(),
                     );
+                    // Debug-only window-size readout, so layout bugs can be
+                    // reported by their exact triggering size.
+                    if cfg!(debug_assertions) {
+                        let sz = ui.ctx().content_rect().size();
+                        ui.label(
+                            egui::RichText::new(format!("{:.0}×{:.0}", sz.x, sz.y))
+                                .monospace()
+                                .weak()
+                                .small(),
+                        )
+                        .on_hover_text("Window size (points). Debug builds only.");
+                    }
                     ui.with_layout(
                         egui::Layout::right_to_left(egui::Align::Center),
                         |ui| {
@@ -780,6 +792,20 @@ impl eframe::App for App {
                 // single stack when the window is narrow. Stacked order matches
                 // column order: Current value → Bits → Format → History.
                 let two_col = ui.available_width() >= 720.0;
+                // `PC_DEBUG=1` dumps the layout decision (and the bit grid dumps
+                // its row geometry) to stderr — cheap introspection for layout
+                // bugs without needing screenshots.
+                if std::env::var("PC_DEBUG").is_ok() {
+                    let sz = ui.ctx().content_rect().size();
+                    eprintln!(
+                        "[layout] window={:.0}x{:.0} ppp={:.2} avail_w={:.1} two_col={two_col} col_w~={:.1}",
+                        sz.x,
+                        sz.y,
+                        ui.ctx().pixels_per_point(),
+                        ui.available_width(),
+                        (ui.available_width() - ui.spacing().item_spacing.x) / 2.0,
+                    );
+                }
                 if two_col {
                     ui.columns(2, |cols| {
                         Self::section(&mut cols[0], |ui| self.current_value_compact(ui));

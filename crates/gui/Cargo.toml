@@ -8,6 +8,11 @@ description = "Desktop GUI for PowerCalc, built on eframe/egui."
 name = "powercalc"
 path = "src/main.rs"
 
+[features]
+# Enables eframe's screenshot support: with this feature on, setting the
+# `EFRAME_SCREENSHOT_TO=/path.png` env var saves a screenshot and exits.
+screenshot = ["eframe/__screenshot"]
+
 [dependencies]
 powercalc-core = { path = "../core" }
 # Use the glow (OpenGL) backend rather than the default wgpu/Vulkan one: glow is

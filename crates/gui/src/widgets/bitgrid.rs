@@ -64,8 +64,10 @@ pub fn bit_grid(ui: &mut egui::Ui, value: Value, accent: Color32) -> Option<Valu
     let avail = ui.available_width();
     let per_row = (((avail + GROUP_GAP) / (group_w + GROUP_GAP)).floor() as usize).max(1);
 
-    for row in groups.chunks(per_row) {
-        ui.horizontal(|ui| {
+    let dbg = std::env::var("PC_DEBUG").is_ok();
+    let mut cell_w = 0.0f32;
+    for (ri, row) in groups.chunks(per_row).enumerate() {
+        let row_resp = ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = GROUP_GAP;
             // Zero the button padding so each cell is exactly CELL wide: the
             // default padding would expand cells past the estimate used to
@@ -83,13 +85,25 @@ pub fn bit_grid(ui: &mut egui::Ui, value: Value, accent: Color32) -> Option<Valu
                         if set {
                             btn = btn.fill(accent);
                         }
-                        if ui.add(btn).on_hover_text(format!("bit {b}")).clicked() {
+                        let r = ui.add(btn);
+                        if cell_w == 0.0 {
+                            cell_w = r.rect.width();
+                        }
+                        if r.on_hover_text(format!("bit {b}")).clicked() {
                             toggled = Some(b as u32);
                         }
                     }
                 });
             }
         });
+        if dbg && ri == 0 {
+            let row_w = row_resp.response.rect.width();
+            eprintln!(
+                "[grid] avail={avail:.1} per_row={per_row} cell_w={cell_w:.1} \
+                 row_w={row_w:.1} overflow={:.1}",
+                row_w - avail
+            );
+        }
     }
 
     toggled.map(|b| value.with_raw(value.raw() ^ (1u128 << b)))
