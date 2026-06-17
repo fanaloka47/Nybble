@@ -22,6 +22,50 @@ enum Field {
     Fixed,
 }
 
+/// Logical window-sizing mode.
+///
+/// - `Compact` forces a single narrow column (420 × 700 px).
+/// - `Full` uses the wide two-column layout (880 × 760 px).
+/// - `Custom` tracks the last manually-resized window size; entered
+///   automatically whenever the user drags the window border.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum ViewMode {
+    Compact,
+    #[default]
+    Full,
+    Custom,
+}
+
+impl ViewMode {
+    const COMPACT_SIZE: egui::Vec2 = egui::vec2(420.0, 700.0);
+    const FULL_SIZE: egui::Vec2 = egui::vec2(880.0, 760.0);
+
+    fn label(self) -> &'static str {
+        match self {
+            ViewMode::Compact => "Compact",
+            ViewMode::Full => "Full",
+            ViewMode::Custom => "Custom",
+        }
+    }
+
+    fn key(self) -> &'static str {
+        match self {
+            ViewMode::Compact => "compact",
+            ViewMode::Full => "full",
+            ViewMode::Custom => "custom",
+        }
+    }
+
+    fn from_key(s: &str) -> Option<ViewMode> {
+        match s {
+            "compact" => Some(ViewMode::Compact),
+            "full" => Some(ViewMode::Full),
+            "custom" => Some(ViewMode::Custom),
+            _ => None,
+        }
+    }
+}
+
 /// Which base(s) the history list shows for each result.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum HistoryBase {
@@ -120,6 +164,16 @@ pub struct App {
     width_scrub_accum: f32,
 
     theme_mode: ThemeMode,
+    view_mode: ViewMode,
+    /// Last window size set by a manual drag; `None` until the first resize.
+    custom_size: Option<egui::Vec2>,
+    /// Frames remaining before the resize-detection check re-arms after a
+    /// programmatic resize (avoids a false "manual resize" on the next frame).
+    resize_cooldown: u8,
+    /// True on the very first frame: sends the startup resize command once the
+    /// event loop is running (calling send_viewport_cmd in new() resets the
+    /// Wayland connection before the loop is ready).
+    startup_resize_pending: bool,
 }
 
 impl App {
@@ -133,6 +187,16 @@ impl App {
             .and_then(|s| s.get_string("history_base"))
             .and_then(|s| HistoryBase::from_key(&s))
             .unwrap_or_default();
+        let view_mode = storage
+            .and_then(|s| s.get_string("view_mode"))
+            .and_then(|s| ViewMode::from_key(&s))
+            .unwrap_or_default();
+        let custom_size = storage
+            .and_then(|s| {
+                let w = s.get_string("custom_w")?.parse::<f32>().ok()?;
+                let h = s.get_string("custom_h")?.parse::<f32>().ok()?;
+                Some(egui::vec2(w, h))
+            });
 
         let width = Width::new(32).unwrap();
         let mut app = Self {
@@ -156,6 +220,10 @@ impl App {
             range_lo: 0,
             width_scrub_accum: 0.0,
             theme_mode,
+            view_mode,
+            custom_size,
+            resize_cooldown: 0,
+            startup_resize_pending: true,
         };
         app.refresh(None);
         app
@@ -318,7 +386,11 @@ impl App {
                 egui::TextEdit::singleline(&mut self.expr)
                     .font(egui::FontId::new(22.0, egui::FontFamily::Monospace))
                     .desired_width(ui.available_width() - 112.0)
-                    .hint_text("0xFF & (1 << 3)")
+                    .hint_text(
+                        egui::RichText::new("0xFF & (1 << 3)")
+                            .font(egui::FontId::new(16.0, egui::FontFamily::Monospace)),
+                    )
+                    .vertical_align(egui::Align::Center)
                     .margin(egui::vec2(10.0, 8.0)),
             );
             paint_input_stripe(ui, resp.rect, accent);
@@ -752,6 +824,54 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         theme::apply(ui.ctx(), self.theme_mode);
 
+        // On the very first frame the event loop is running — safe to resize.
+        if self.startup_resize_pending {
+            self.startup_resize_pending = false;
+            let startup_size = match self.view_mode {
+                ViewMode::Compact => ViewMode::COMPACT_SIZE,
+                ViewMode::Full => ViewMode::FULL_SIZE,
+                ViewMode::Custom => self.custom_size.unwrap_or(ViewMode::FULL_SIZE),
+            };
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::InnerSize(startup_size));
+            self.resize_cooldown = 20;
+        }
+
+        // Detect manual window resize using content_rect, which is always
+        // available (unlike inner_rect which is often None under WSL/glow).
+        // Skip during the cooldown that follows every programmatic resize.
+        let current_size = ui.ctx().content_rect().size();
+        if self.resize_cooldown > 0 {
+            self.resize_cooldown -= 1;
+        } else {
+            match self.view_mode {
+                ViewMode::Compact | ViewMode::Full => {
+                    let expected = if self.view_mode == ViewMode::Compact {
+                        ViewMode::COMPACT_SIZE
+                    } else {
+                        ViewMode::FULL_SIZE
+                    };
+                    if (current_size - expected).length() > 4.0 {
+                        // Snap to a preset if the size happens to match one;
+                        // otherwise enter Custom and remember this size.
+                        if (current_size - ViewMode::COMPACT_SIZE).length() <= 4.0 {
+                            self.view_mode = ViewMode::Compact;
+                        } else if (current_size - ViewMode::FULL_SIZE).length() <= 4.0 {
+                            self.view_mode = ViewMode::Full;
+                        } else {
+                            self.view_mode = ViewMode::Custom;
+                            self.custom_size = Some(current_size);
+                        }
+                    }
+                }
+                // While in Custom the user may keep resizing; track every
+                // change so the last manually-set size is always saved.
+                ViewMode::Custom => {
+                    self.custom_size = Some(current_size);
+                }
+            }
+        }
+
         egui::CentralPanel::default().show_inside(ui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 // Header: title + subtitle on the left, theme toggle on the right.
@@ -785,6 +905,31 @@ impl eframe::App for App {
                             {
                                 self.theme_mode = self.theme_mode.next();
                             }
+                            // Cycle: Compact → Full → Custom (if exists) → Compact
+                            let view_label = self.view_mode.label();
+                            if ui
+                                .button(view_label)
+                                .on_hover_text("Cycle view: Compact / Full / Custom")
+                                .clicked()
+                            {
+                                let (next_mode, new_size) = match self.view_mode {
+                                    ViewMode::Compact => {
+                                        (ViewMode::Full, ViewMode::FULL_SIZE)
+                                    }
+                                    ViewMode::Full => match self.custom_size {
+                                        Some(sz) => (ViewMode::Custom, sz),
+                                        None => (ViewMode::Compact, ViewMode::COMPACT_SIZE),
+                                    },
+                                    ViewMode::Custom => {
+                                        (ViewMode::Compact, ViewMode::COMPACT_SIZE)
+                                    }
+                                };
+                                self.view_mode = next_mode;
+                                self.resize_cooldown = 10;
+                                ui.ctx().send_viewport_cmd(
+                                    egui::ViewportCommand::InnerSize(new_size),
+                                );
+                            }
                         },
                     );
                 });
@@ -796,7 +941,8 @@ impl eframe::App for App {
                 // Below it: two columns when there's room, collapsing to a
                 // single stack when the window is narrow. Stacked order matches
                 // column order: Current value → Bits → Format → History.
-                let two_col = ui.available_width() >= 720.0;
+                let two_col =
+                    self.view_mode != ViewMode::Compact && ui.available_width() >= 720.0;
                 // `PC_DEBUG=1` dumps the layout decision (and the bit grid dumps
                 // its row geometry) to stderr — cheap introspection for layout
                 // bugs without needing screenshots.
@@ -834,6 +980,11 @@ impl eframe::App for App {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         storage.set_string("theme_mode", self.theme_mode.key().to_owned());
         storage.set_string("history_base", self.history_base.key().to_owned());
+        storage.set_string("view_mode", self.view_mode.key().to_owned());
+        if let Some(sz) = self.custom_size {
+            storage.set_string("custom_w", sz.x.to_string());
+            storage.set_string("custom_h", sz.y.to_string());
+        }
     }
 }
 
