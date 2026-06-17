@@ -88,7 +88,6 @@ pub struct App {
     width: Width,
     sign: Signedness,
     frac_bits: u32,
-    custom_width: u32,
 
     // Text buffers backing the editable fields.
     hex: String,
@@ -107,7 +106,19 @@ pub struct App {
     /// Error from the last expression evaluation, shown inline under the field.
     /// Only set at evaluate time; cleared when the expression is edited.
     expr_error: Option<String>,
+
+    /// Transient bottom-of-screen toast (copies, parse errors).
     status: Option<String>,
+    /// `input.time` after which a transient toast auto-dismisses. Parse errors
+    /// use [`f64::INFINITY`] so they persist until the next successful action.
+    status_until: f64,
+
+    /// `bits[hi:lo]` extraction range.
+    range_hi: u32,
+    range_lo: u32,
+    /// Sub-pixel accumulator for the width drag-scrubber (3px per bit).
+    width_scrub_accum: f32,
+
     theme_mode: ThemeMode,
 }
 
@@ -129,7 +140,6 @@ impl App {
             width,
             sign: Signedness::Unsigned,
             frac_bits: 0,
-            custom_width: 32,
             hex: String::new(),
             dec: String::new(),
             bin: String::new(),
@@ -141,6 +151,10 @@ impl App {
             history_base,
             expr_error: None,
             status: None,
+            status_until: 0.0,
+            range_hi: 7,
+            range_lo: 0,
+            width_scrub_accum: 0.0,
             theme_mode,
         };
         app.refresh(None);
@@ -186,9 +200,21 @@ impl App {
         format!("{}", fixed::to_real(self.value, self.frac_bits, self.sign))
     }
 
+    /// Copy `text` to the clipboard and flash a short, auto-dismissing toast.
+    fn copy(&mut self, ctx: &egui::Context, text: String, label: &str) {
+        ctx.copy_text(text);
+        self.status = Some(format!("Copied {label}"));
+        self.status_until = ctx.input(|i| i.time) + 1.4;
+    }
+
+    /// Show a persistent error toast (cleared on the next successful action).
+    fn error(&mut self, msg: impl Into<String>) {
+        self.status = Some(msg.into());
+        self.status_until = f64::INFINITY;
+    }
+
     fn set_width(&mut self, bits: u32) {
         self.width = Width::clamped(bits);
-        self.custom_width = self.width.bits();
         self.value = self.value.with_width(self.width);
         if self.frac_bits > self.width.bits() {
             self.frac_bits = self.width.bits();
@@ -216,7 +242,7 @@ impl App {
                 self.status = None;
                 self.refresh(Some(field));
             }
-            Err(e) => self.status = Some(e),
+            Err(e) => self.error(e),
         }
     }
 
@@ -231,7 +257,7 @@ impl App {
                 self.status = None;
                 self.refresh(Some(Field::Fixed));
             }
-            Err(_) => self.status = Some("invalid real number".to_owned()),
+            Err(_) => self.error("invalid real number"),
         }
     }
 
@@ -269,7 +295,6 @@ impl App {
     fn recall(&mut self, entry: HistoryEntry) {
         self.value = entry.value;
         self.width = entry.value.width();
-        self.custom_width = self.width.bits();
         self.sign = entry.sign;
         if self.frac_bits > self.width.bits() {
             self.frac_bits = self.width.bits();
@@ -319,36 +344,9 @@ impl App {
         });
 
         if let Some(err) = &self.expr_error {
-            ui.add_space(4.0);
+            ui.add_space(6.0);
             ui.colored_label(egui::Color32::from_rgb(229, 115, 115), err);
         }
-
-        ui.add_space(8.0);
-        ui.horizontal_wrapped(|ui| {
-            const OPS: &[(&str, &str)] = &[
-                ("AND", " & "),
-                ("OR", " | "),
-                ("XOR", " ^ "),
-                ("NOT", "~"),
-                ("SHL", " << "),
-                ("SHR", " >> "),
-                ("(", "("),
-                (")", ")"),
-                ("+", " + "),
-                ("-", " - "),
-                ("*", " * "),
-                ("/", " / "),
-                ("ans", "ans"),
-            ];
-            for (label, token) in OPS {
-                if ui.button(*label).clicked() {
-                    self.expr.push_str(token);
-                }
-            }
-            if ui.button("Clear").clicked() {
-                self.expr.clear();
-            }
-        });
     }
 
     fn history_panel(&mut self, ui: &mut egui::Ui) {
@@ -389,6 +387,7 @@ impl App {
         let accent = theme::accent(ui.ctx());
         let item_fill = ui.visuals().faint_bg_color;
         let mut recall_idx: Option<usize> = None;
+        let mut copied: Option<&'static str> = None;
 
         egui::ScrollArea::vertical()
             .max_height(240.0)
@@ -413,7 +412,9 @@ impl App {
                                 recall_idx = Some(i);
                             }
                             expr.on_hover_text("Click to recall this expression");
-                            value_lines(ui, entry.value, entry.sign, base);
+                            if let Some(label) = value_lines(ui, entry.value, entry.sign, base) {
+                                copied = Some(label);
+                            }
                         });
                     ui.add_space(6.0);
                 }
@@ -423,11 +424,21 @@ impl App {
             let entry = self.history[i].clone();
             self.recall(entry);
         }
+        if let Some(label) = copied {
+            self.status = Some(format!("Copied {label}"));
+            self.status_until = ui.ctx().input(|i| i.time) + 1.4;
+        }
     }
 
-    fn controls_bar(&mut self, ui: &mut egui::Ui) {
+    /// The FORMAT card: width (preset chips + a drag-scrubber), sign, the
+    /// fixed-point split, and the bit-range extractor.
+    fn format_section(&mut self, ui: &mut egui::Ui) {
+        section_label(ui, "FORMAT");
+        let accent = theme::accent(ui.ctx());
+
+        // Width: presets, then a draggable "{n}-bit" scrubber (3px per bit).
         ui.horizontal_wrapped(|ui| {
-            ui.label("Width:");
+            ui.label(egui::RichText::new("Width").weak());
             for bits in [8u32, 16, 32, 64] {
                 if ui
                     .selectable_label(self.width.bits() == bits, bits.to_string())
@@ -436,18 +447,34 @@ impl App {
                     self.set_width(bits);
                 }
             }
-            ui.label("custom");
-            let mut custom = self.custom_width;
-            if ui
-                .add(egui::Slider::new(&mut custom, 1..=128))
-                .changed()
-            {
-                self.set_width(custom);
+            let scrub = ui
+                .add(
+                    egui::Label::new(
+                        egui::RichText::new(format!("{}-bit ↔", self.width.bits()))
+                            .monospace()
+                            .color(accent),
+                    )
+                    .sense(egui::Sense::drag()),
+                )
+                .on_hover_cursor(egui::CursorIcon::ResizeHorizontal)
+                .on_hover_text("Drag left / right to adjust width");
+            if scrub.drag_started() {
+                self.width_scrub_accum = 0.0;
+            }
+            if scrub.dragged() {
+                self.width_scrub_accum += scrub.drag_delta().x;
+                let steps = (self.width_scrub_accum / 3.0).trunc() as i64;
+                if steps != 0 {
+                    self.width_scrub_accum -= steps as f32 * 3.0;
+                    let bits = (self.width.bits() as i64 + steps).clamp(1, 128) as u32;
+                    self.set_width(bits);
+                }
             }
         });
 
+        ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
-            ui.label("Sign:");
+            ui.label(egui::RichText::new("Sign").weak());
             if ui
                 .selectable_label(self.sign == Signedness::Unsigned, "unsigned")
                 .clicked()
@@ -461,6 +488,16 @@ impl App {
                 self.set_sign(Signedness::Signed);
             }
         });
+
+        ui.add_space(8.0);
+        ui.separator();
+        ui.add_space(6.0);
+        self.fixed_point(ui);
+
+        ui.add_space(8.0);
+        ui.separator();
+        ui.add_space(6.0);
+        self.bit_range(ui);
     }
 
     /// Compact current value: a base selector, the selected base shown large
@@ -501,10 +538,12 @@ impl App {
         ui.add_space(6.0);
 
         // The other three bases, small and read-only (click to copy).
+        let mut copied: Option<&'static str> = None;
         for other in BASE_FIELDS {
             if other == field {
                 continue;
             }
+            let label = field_label(other);
             let text = match other {
                 Field::Hex => self.hex.clone(),
                 Field::Dec => self.dec.clone(),
@@ -512,28 +551,81 @@ impl App {
                 Field::Oct => self.oct.clone(),
                 Field::Fixed => unreachable!(),
             };
-            mini_value_line(ui, field_label(other), text);
+            if mini_value_line(ui, label, text.clone()) {
+                ui.ctx().copy_text(text);
+                copied = Some(label);
+            }
+        }
+        if let Some(label) = copied {
+            self.status = Some(format!("Copied {label}"));
+            self.status_until = ui.ctx().input(|i| i.time) + 1.4;
         }
     }
 
     fn fixed_point(&mut self, ui: &mut egui::Ui) {
         let wbits = self.width.bits();
-        ui.horizontal_wrapped(|ui| {
-            let int_bits = wbits.saturating_sub(self.frac_bits);
-            ui.label(format!("Fixed-point  Q{int_bits}.{}", self.frac_bits));
-            if ui
-                .add(egui::Slider::new(&mut self.frac_bits, 0..=wbits).text("frac bits"))
-                .changed()
-            {
-                self.refresh(None);
-            }
+        let accent = theme::accent(ui.ctx());
+        let int_bits = wbits.saturating_sub(self.frac_bits);
+
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Fixed-point").weak());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.monospace(
+                    egui::RichText::new(format!("Q{int_bits}.{}", self.frac_bits)).color(accent),
+                );
+            });
         });
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Real:");
+        ui.add_space(6.0);
+
+        // A fill bar: click or drag to set the fractional/integer split. The
+        // accent fill grows from the left; the "{frac}/{width}" label floats
+        // centred.
+        let avail = ui.available_width();
+        let (rect, resp) =
+            ui.allocate_exact_size(egui::vec2(avail, 22.0), egui::Sense::click_and_drag());
+        if resp.clicked() || resp.dragged() {
+            if let Some(p) = resp.interact_pointer_pos() {
+                let ratio = ((p.x - rect.left()) / rect.width()).clamp(0.0, 1.0);
+                let frac = (ratio * wbits as f32).round() as u32;
+                if frac != self.frac_bits {
+                    self.frac_bits = frac.min(wbits);
+                    self.refresh(None);
+                }
+            }
+        }
+        let painter = ui.painter();
+        let track = ui.visuals().widgets.inactive.bg_fill;
+        let radius = egui::CornerRadius::same(11);
+        painter.rect_filled(rect, radius, track);
+        let ratio = if wbits == 0 {
+            0.0
+        } else {
+            self.frac_bits as f32 / wbits as f32
+        };
+        if ratio > 0.0 {
+            let fill = egui::Rect::from_min_size(
+                rect.min,
+                egui::vec2(rect.width() * ratio, rect.height()),
+            );
+            let fill_color =
+                egui::Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 184);
+            painter.rect_filled(fill, radius, fill_color);
+        }
+        painter.text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            format!("{}/{}", self.frac_bits, wbits),
+            egui::FontId::monospace(12.0),
+            ui.visuals().text_color(),
+        );
+        ui.add_space(8.0);
+
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("real").weak());
             let resp = ui.add(
                 egui::TextEdit::singleline(&mut self.fixed_input)
                     .font(egui::TextStyle::Monospace)
-                    .desired_width(180.0),
+                    .desired_width(f32::INFINITY),
             );
             if resp.changed() {
                 self.on_fixed_edit();
@@ -541,12 +633,112 @@ impl App {
         });
     }
 
-    fn bit_grid(&mut self, ui: &mut egui::Ui) {
+    /// The bit-range extractor: pick `bits[hi:lo]` and read the slice back in
+    /// hex/dec/bin, click-to-copy.
+    fn bit_range(&mut self, ui: &mut egui::Ui) {
+        let wbits = self.width.bits();
+        let accent = theme::accent(ui.ctx());
+        let top = wbits.saturating_sub(1);
+
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Bit range").weak());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.monospace(
+                    egui::RichText::new(format!("bits[{}:{}]", self.range_hi, self.range_lo))
+                        .color(accent),
+                );
+            });
+        });
+        ui.add_space(6.0);
+
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new("hi").weak());
+            ui.add(egui::DragValue::new(&mut self.range_hi).range(0..=top));
+            ui.label(egui::RichText::new("lo").weak());
+            ui.add(egui::DragValue::new(&mut self.range_lo).range(0..=top));
+            // Normalize: clamp to width and keep hi >= lo.
+            self.range_hi = self.range_hi.min(top);
+            self.range_lo = self.range_lo.min(top);
+            let (hi, lo) = if self.range_lo > self.range_hi {
+                (self.range_lo, self.range_hi)
+            } else {
+                (self.range_hi, self.range_lo)
+            };
+            let range_width = hi - lo + 1;
+            ui.label(egui::RichText::new(format!("({range_width} bits)")).weak());
+        });
+        ui.add_space(6.0);
+
+        let (hi, lo) = if self.range_lo > self.range_hi {
+            (self.range_lo, self.range_hi)
+        } else {
+            (self.range_hi, self.range_lo)
+        };
+        let range_width = hi - lo + 1;
+        let mask = if range_width >= 128 {
+            u128::MAX
+        } else {
+            (1u128 << range_width) - 1
+        };
+        let field = (self.value.raw() >> lo) & mask;
+        let extract_hex = format!("0x{field:X}");
+        let extract_dec = field.to_string();
+        let extract_bin = format!("0b{field:0width$b}", width = range_width as usize);
+
+        let item_fill = ui.visuals().extreme_bg_color;
+        let resp = egui::Frame::group(ui.style())
+            .fill(item_fill)
+            .inner_margin(egui::Margin::symmetric(10, 8))
+            .corner_radius(egui::CornerRadius::same(8))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal_wrapped(|ui| {
+                    ui.monospace(egui::RichText::new(&extract_hex).strong());
+                    ui.monospace(egui::RichText::new(&extract_dec).weak());
+                    ui.monospace(egui::RichText::new(&extract_bin).weak());
+                });
+            })
+            .response
+            .interact(egui::Sense::click())
+            .on_hover_text("Click to copy hex");
+        if resp.clicked() {
+            self.copy(ui.ctx(), extract_hex, "field");
+        }
+    }
+
+    fn bits_section(&mut self, ui: &mut egui::Ui) {
+        section_label(ui, "BITS · MSB to LSB");
         let accent = theme::accent(ui.ctx());
         if let Some(new_value) = widgets::bit_grid(ui, self.value, accent) {
             self.value = new_value;
             self.status = None;
             self.refresh(None);
+        }
+    }
+
+    /// Draw the auto-dismissing toast and clear it once expired.
+    fn toast(&mut self, ctx: &egui::Context) {
+        let now = ctx.input(|i| i.time);
+        if self.status.is_some() && now > self.status_until {
+            self.status = None;
+        }
+        let Some(msg) = self.status.clone() else {
+            return;
+        };
+        egui::Area::new(egui::Id::new("powercalc_toast"))
+            .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -22.0))
+            .interactable(false)
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style())
+                    .inner_margin(egui::Margin::symmetric(16, 9))
+                    .show(ui, |ui| {
+                        ui.monospace(msg);
+                    });
+            });
+        // Schedule a repaint so transient toasts dismiss without further input.
+        if self.status_until.is_finite() {
+            let remaining = (self.status_until - now).max(0.0);
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64(remaining));
         }
     }
 }
@@ -557,15 +749,21 @@ impl eframe::App for App {
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                // Header: title on the left, theme toggle on the right.
+                // Header: title + subtitle on the left, theme toggle on the right.
                 ui.horizontal(|ui| {
                     ui.heading("PowerCalc");
+                    ui.label(
+                        egui::RichText::new("FPGA bit calculator")
+                            .monospace()
+                            .weak()
+                            .small(),
+                    );
                     ui.with_layout(
                         egui::Layout::right_to_left(egui::Align::Center),
                         |ui| {
                             if ui
-                                .button(format!("Theme: {}", self.theme_mode.label()))
-                                .on_hover_text("Toggle theme: Auto → Light → Dark")
+                                .button(format!("Theme · {}", self.theme_mode.label()))
+                                .on_hover_text("Toggle theme: Auto, Light, Dark")
                                 .clicked()
                             {
                                 self.theme_mode = self.theme_mode.next();
@@ -573,33 +771,33 @@ impl eframe::App for App {
                         },
                     );
                 });
-                ui.add_space(8.0);
+                ui.add_space(10.0);
 
-                // Two columns. Left: the expression centerpiece and the
-                // history below it. Right: the current value, format controls,
-                // and the bit grid.
-                ui.columns(2, |cols| {
-                    Self::section(&mut cols[0], |ui| self.expression_centerpiece(ui));
-                    Self::section(&mut cols[0], |ui| self.history_panel(ui));
+                // The expression spans the full width on top.
+                Self::section(ui, |ui| self.expression_centerpiece(ui));
 
-                    Self::section(&mut cols[1], |ui| self.current_value_compact(ui));
-                    Self::section(&mut cols[1], |ui| {
-                        section_label(ui, "FORMAT");
-                        self.controls_bar(ui);
-                        ui.add_space(6.0);
-                        self.fixed_point(ui);
+                // Below it: two columns when there's room, collapsing to a
+                // single stack when the window is narrow. Stacked order matches
+                // column order: Current value → Bits → Format → History.
+                let two_col = ui.available_width() >= 720.0;
+                if two_col {
+                    ui.columns(2, |cols| {
+                        Self::section(&mut cols[0], |ui| self.current_value_compact(ui));
+                        Self::section(&mut cols[0], |ui| self.bits_section(ui));
+
+                        Self::section(&mut cols[1], |ui| self.format_section(ui));
+                        Self::section(&mut cols[1], |ui| self.history_panel(ui));
                     });
-                    Self::section(&mut cols[1], |ui| {
-                        section_label(ui, "BITS  (MSB → LSB)");
-                        self.bit_grid(ui);
-                    });
-                });
-
-                if let Some(msg) = &self.status {
-                    ui.colored_label(egui::Color32::from_rgb(229, 115, 115), msg);
+                } else {
+                    Self::section(ui, |ui| self.current_value_compact(ui));
+                    Self::section(ui, |ui| self.bits_section(ui));
+                    Self::section(ui, |ui| self.format_section(ui));
+                    Self::section(ui, |ui| self.history_panel(ui));
                 }
             });
         });
+
+        self.toast(ui.ctx());
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
@@ -628,53 +826,74 @@ fn section_label(ui: &mut egui::Ui, text: &str) {
 }
 
 /// A small, weak, click-to-copy base line for the compact current-value view.
-fn mini_value_line(ui: &mut egui::Ui, label: &str, text: String) {
-    let resp = ui.add(
-        egui::Label::new(
-            egui::RichText::new(format!("{label}  {text}"))
-                .monospace()
-                .small()
-                .weak(),
+/// Returns `true` if the line was clicked (the caller copies and toasts).
+fn mini_value_line(ui: &mut egui::Ui, label: &str, text: String) -> bool {
+    let resp = ui
+        .add(
+            egui::Label::new(
+                egui::RichText::new(format!("{label}  {text}"))
+                    .monospace()
+                    .small()
+                    .weak(),
+            )
+            .truncate()
+            .sense(egui::Sense::click()),
         )
-        .sense(egui::Sense::click()),
-    );
-    if resp.clicked() {
-        ui.ctx().copy_text(text);
-    }
-    resp.on_hover_text("Click to copy");
+        .on_hover_text("Click to copy");
+    resp.clicked()
 }
 
 /// Render the result `value` in one base or all four, as click-to-copy lines.
-fn value_lines(ui: &mut egui::Ui, value: Value, sign: Signedness, base: HistoryBase) {
+/// Returns the label of a line that was clicked (for the toast), if any.
+fn value_lines(
+    ui: &mut egui::Ui,
+    value: Value,
+    sign: Signedness,
+    base: HistoryBase,
+) -> Option<&'static str> {
+    let mut copied = None;
+    let mut line = |ui: &mut egui::Ui, label: &'static str, text: String| {
+        if value_line(ui, label, text) {
+            copied = Some(label);
+        }
+    };
     match base {
         HistoryBase::All => {
-            value_line(ui, "HEX", value.to_hex());
-            value_line(ui, "DEC", value.to_dec(sign));
-            value_line(ui, "BIN", value.to_bin());
-            value_line(ui, "OCT", value.to_oct());
+            line(ui, "HEX", value.to_hex());
+            line(ui, "DEC", value.to_dec(sign));
+            line(ui, "BIN", value.to_bin());
+            line(ui, "OCT", value.to_oct());
         }
-        HistoryBase::Hex => value_line(ui, "HEX", value.to_hex()),
-        HistoryBase::Dec => value_line(ui, "DEC", value.to_dec(sign)),
-        HistoryBase::Bin => value_line(ui, "BIN", value.to_bin()),
-        HistoryBase::Oct => value_line(ui, "OCT", value.to_oct()),
+        HistoryBase::Hex => line(ui, "HEX", value.to_hex()),
+        HistoryBase::Dec => line(ui, "DEC", value.to_dec(sign)),
+        HistoryBase::Bin => line(ui, "BIN", value.to_bin()),
+        HistoryBase::Oct => line(ui, "OCT", value.to_oct()),
     }
+    copied
 }
 
-/// One labelled, monospace, click-to-copy value line.
-fn value_line(ui: &mut egui::Ui, label: &str, text: String) {
+/// One labelled, monospace, click-to-copy value line. Copies on click and
+/// returns whether it was clicked (so the caller can show a toast).
+fn value_line(ui: &mut egui::Ui, label: &str, text: String) -> bool {
+    let mut clicked = false;
     ui.horizontal(|ui| {
         ui.add_sized(
             [34.0, ui.spacing().interact_size.y],
             egui::Label::new(egui::RichText::new(label).weak().monospace().small()),
         );
-        let resp = ui.add(
-            egui::Label::new(egui::RichText::new(&text).monospace()).sense(egui::Sense::click()),
-        );
+        let resp = ui
+            .add(
+                egui::Label::new(egui::RichText::new(&text).monospace())
+                    .truncate()
+                    .sense(egui::Sense::click()),
+            )
+            .on_hover_text("Click to copy");
         if resp.clicked() {
             ui.ctx().copy_text(text.clone());
+            clicked = true;
         }
-        resp.on_hover_text("Click to copy");
     });
+    clicked
 }
 
 /// Parse a base-field string into a width-masked [`Value`]. Whitespace and `_`
