@@ -204,6 +204,9 @@ fn build_style(theme: Theme) -> Style {
     v.override_text_color = None;
     style.visuals = v;
 
+    // --- Interaction ---
+    style.interaction.selectable_labels = false;
+
     // --- Spacing ---
     style.spacing.item_spacing = egui::vec2(8.0, 8.0);
     style.spacing.button_padding = egui::vec2(10.0, 6.0);
