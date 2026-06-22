@@ -640,42 +640,64 @@ impl App {
         let mut recall_idx: Option<usize> = None;
         let mut copied: Option<&'static str> = None;
 
-        egui::ScrollArea::vertical()
-            .max_height(240.0)
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                // Newest first.
-                for (i, entry) in self.history.iter().enumerate().rev() {
-                    egui::Frame::group(ui.style())
-                        .fill(item_fill)
-                        .stroke(egui::Stroke::NONE)
-                        .inner_margin(egui::Margin::same(8))
-                        .corner_radius(egui::CornerRadius::same(8))
-                        .show(ui, |ui| {
-                            ui.set_width(ui.available_width());
-                            let expr = ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(&entry.expr).monospace().color(accent),
-                                )
-                                .sense(egui::Sense::click()),
-                            );
-                            if expr.clicked() {
-                                recall_idx = Some(i);
-                            }
-                            expr.on_hover_text("Click to recall this expression");
-                            let line_copied = match entry.result {
-                                HistoryResult::Integer { value, sign } => {
-                                    value_lines(ui, value, sign, base)
+        // Size the list to about five entries, then scroll for the rest. An
+        // entry's height depends on how many value lines the current base filter
+        // shows (four for "All", one otherwise), so derive it from the row
+        // metrics rather than hard-coding a pixel height.
+        let row_h = ui.spacing().interact_size.y;
+        let gap = ui.spacing().item_spacing.y;
+        let value_rows = if base == HistoryBase::All { 4.0 } else { 1.0 };
+        let entry_h = 16.0 // frame top + bottom inner margins
+            + row_h // expression line
+            + gap
+            + value_rows * row_h
+            + (value_rows - 1.0) * gap
+            + 6.0 // add_space after each entry
+            + gap; // spacing between entries
+        // Snug to the entries until we hit five, then cap and scroll. We reserve
+        // the box via allocate_ui so the inner scroll area gets this height — a
+        // bare nested ScrollArea would otherwise be clamped to whatever little
+        // vertical space is left in the column and collapse to ~one entry.
+        let visible = (self.history.len().min(5)) as f32;
+        let box_h = entry_h * visible;
+
+        ui.allocate_ui(egui::vec2(ui.available_width(), box_h), |ui| {
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    // Newest first.
+                    for (i, entry) in self.history.iter().enumerate().rev() {
+                        egui::Frame::group(ui.style())
+                            .fill(item_fill)
+                            .stroke(egui::Stroke::NONE)
+                            .inner_margin(egui::Margin::same(8))
+                            .corner_radius(egui::CornerRadius::same(8))
+                            .show(ui, |ui| {
+                                ui.set_width(ui.available_width());
+                                let expr = ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(&entry.expr).monospace().color(accent),
+                                    )
+                                    .sense(egui::Sense::click()),
+                                );
+                                if expr.clicked() {
+                                    recall_idx = Some(i);
                                 }
-                                HistoryResult::Float(x) => float_value_lines(ui, x, base),
-                            };
-                            if let Some(label) = line_copied {
-                                copied = Some(label);
-                            }
-                        });
-                    ui.add_space(6.0);
-                }
-            });
+                                expr.on_hover_text("Click to recall this expression");
+                                let line_copied = match entry.result {
+                                    HistoryResult::Integer { value, sign } => {
+                                        value_lines(ui, value, sign, base)
+                                    }
+                                    HistoryResult::Float(x) => float_value_lines(ui, x, base),
+                                };
+                                if let Some(label) = line_copied {
+                                    copied = Some(label);
+                                }
+                            });
+                        ui.add_space(6.0);
+                    }
+                });
+        });
 
         if let Some(i) = recall_idx {
             let entry = self.history[i].clone();
@@ -1073,12 +1095,6 @@ impl eframe::App for App {
                 // Header: title + subtitle on the left, theme toggle on the right.
                 ui.horizontal(|ui| {
                     ui.heading("PowerCalc");
-                    ui.label(
-                        egui::RichText::new("FPGA bit calculator")
-                            .monospace()
-                            .weak()
-                            .small(),
-                    );
                     // Debug-only window-size readout, so layout bugs can be
                     // reported by their exact triggering size.
                     if cfg!(debug_assertions) {
