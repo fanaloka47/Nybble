@@ -6,7 +6,7 @@
 //! history all read from it. Signedness only changes the decimal rendering and
 //! the meaning of `>>` and `/`.
 
-use powercalc_core::{eval, fixed, Signedness, Value, Width};
+use powercalc_core::{eval, eval_float, f64_to_value, fixed, Signedness, Value, Width};
 
 use crate::theme::{self, ThemeMode};
 use crate::widgets;
@@ -20,6 +20,37 @@ enum Field {
     Bin,
     Oct,
     Fixed,
+}
+
+/// How the calculator interprets expressions and the current value.
+///
+/// `Integer` is the default programmer's-calculator behaviour (width-bound
+/// two's-complement bits). `Float` evaluates in full-precision `f64` for the
+/// occasional non-integer calculation. The active mode is resolved through the
+/// single [`App::is_float_mode`] accessor, so changing *how* float mode is
+/// triggered later (e.g. implicit promotion) is a one-place edit.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum NumberMode {
+    #[default]
+    Integer,
+    Float,
+}
+
+impl NumberMode {
+    fn key(self) -> &'static str {
+        match self {
+            NumberMode::Integer => "integer",
+            NumberMode::Float => "float",
+        }
+    }
+
+    fn from_key(s: &str) -> Option<NumberMode> {
+        match s {
+            "integer" => Some(NumberMode::Integer),
+            "float" => Some(NumberMode::Float),
+            _ => None,
+        }
+    }
 }
 
 /// Logical window-sizing mode.
@@ -69,9 +100,9 @@ impl ViewMode {
 /// Which base(s) the history list shows for each result.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum HistoryBase {
-    #[default]
     All,
     Hex,
+    #[default]
     Dec,
     Bin,
     Oct,
@@ -118,13 +149,20 @@ impl HistoryBase {
     }
 }
 
-/// One evaluated expression and its result, captured with the sign mode in
-/// effect at the time so the decimal rendering stays faithful.
+/// The result of an evaluated expression, in the mode that produced it.
+/// Integer results carry the sign in effect so the decimal stays faithful;
+/// float results carry the full-precision `f64`.
+#[derive(Clone, Copy)]
+enum HistoryResult {
+    Integer { value: Value, sign: Signedness },
+    Float(f64),
+}
+
+/// One evaluated expression and the result it produced.
 #[derive(Clone)]
 struct HistoryEntry {
     expr: String,
-    value: Value,
-    sign: Signedness,
+    result: HistoryResult,
 }
 
 pub struct App {
@@ -132,6 +170,13 @@ pub struct App {
     width: Width,
     sign: Signedness,
     frac_bits: u32,
+
+    /// Integer vs. full-precision float evaluation. Read everywhere via
+    /// [`App::is_float_mode`]; the mode toggle is its only writer.
+    number_mode: NumberMode,
+    /// The current value in float mode, and the `ans` source there. Kept
+    /// separate from `value` so switching modes never corrupts the other.
+    float_value: f64,
 
     // Text buffers backing the editable fields.
     hex: String,
@@ -191,6 +236,10 @@ impl App {
             .and_then(|s| s.get_string("view_mode"))
             .and_then(|s| ViewMode::from_key(&s))
             .unwrap_or_default();
+        let number_mode = storage
+            .and_then(|s| s.get_string("number_mode"))
+            .and_then(|s| NumberMode::from_key(&s))
+            .unwrap_or_default();
         let custom_size = storage
             .and_then(|s| {
                 let w = s.get_string("custom_w")?.parse::<f32>().ok()?;
@@ -204,13 +253,15 @@ impl App {
             width,
             sign: Signedness::Unsigned,
             frac_bits: 0,
+            number_mode,
+            float_value: 0.0,
             hex: String::new(),
             dec: String::new(),
             bin: String::new(),
             oct: String::new(),
             fixed_input: String::new(),
             expr: String::new(),
-            focus_base: Field::Hex,
+            focus_base: Field::Dec,
             history: Vec::new(),
             history_base,
             expr_error: None,
@@ -247,6 +298,24 @@ impl App {
 
     /// Rewrite every field buffer from the canonical value, except `skip`.
     fn refresh(&mut self, skip: Option<Field>) {
+        if self.is_float_mode() {
+            // Decimal shows the full-precision float; the bit rows show its
+            // f64 IEEE-754 pattern (always 64-bit, independent of `width`).
+            let bits = f64_to_value(self.float_value);
+            if skip != Some(Field::Dec) {
+                self.dec = format!("{}", self.float_value);
+            }
+            if skip != Some(Field::Hex) {
+                self.hex = bits.to_hex();
+            }
+            if skip != Some(Field::Bin) {
+                self.bin = bits.to_bin();
+            }
+            if skip != Some(Field::Oct) {
+                self.oct = bits.to_oct();
+            }
+            return;
+        }
         if skip != Some(Field::Hex) {
             self.hex = self.value.to_hex();
         }
@@ -295,8 +364,41 @@ impl App {
         self.refresh(None);
     }
 
+    /// The single source of truth for whether float mode is active. Change this
+    /// (and `set_number_mode`) to alter how float mode is triggered.
+    fn is_float_mode(&self) -> bool {
+        self.number_mode == NumberMode::Float
+    }
+
+    /// Switch modes, seeding the destination from the current value so a result
+    /// carries over (e.g. `ans` stays meaningful across a toggle).
+    fn set_number_mode(&mut self, mode: NumberMode) {
+        if mode == self.number_mode {
+            return;
+        }
+        match mode {
+            NumberMode::Float => {
+                self.float_value = match self.sign {
+                    Signedness::Unsigned => self.value.as_unsigned() as f64,
+                    Signedness::Signed => self.value.as_signed() as f64,
+                };
+            }
+            // Integer keeps whatever `value` already holds; the float result is
+            // left untouched in `float_value` for when we switch back.
+            NumberMode::Integer => {}
+        }
+        self.number_mode = mode;
+        self.expr_error = None;
+        self.status = None;
+        self.refresh(None);
+    }
+
     /// Parse the buffer for `field`, update the value, and refresh the others.
     fn on_field_edit(&mut self, field: Field) {
+        if self.is_float_mode() {
+            self.on_field_edit_float(field);
+            return;
+        }
         let (text, radix) = match field {
             Field::Hex => (self.hex.clone(), 16),
             Field::Dec => (self.dec.clone(), 10),
@@ -311,6 +413,45 @@ impl App {
                 self.refresh(Some(field));
             }
             Err(e) => self.error(e),
+        }
+    }
+
+    /// Field editing in float mode: the decimal field accepts a real number;
+    /// the hex/bin/oct fields reinterpret an entered 64-bit pattern as an f64.
+    fn on_field_edit_float(&mut self, field: Field) {
+        match field {
+            Field::Dec => {
+                let text = self.dec.trim();
+                if text.is_empty() {
+                    return;
+                }
+                match text.parse::<f64>() {
+                    Ok(x) => {
+                        self.float_value = x;
+                        self.status = None;
+                        self.refresh(Some(field));
+                    }
+                    Err(_) => self.error("invalid real number"),
+                }
+            }
+            Field::Hex | Field::Bin | Field::Oct => {
+                let (text, radix) = match field {
+                    Field::Hex => (self.hex.clone(), 16),
+                    Field::Bin => (self.bin.clone(), 2),
+                    Field::Oct => (self.oct.clone(), 8),
+                    _ => unreachable!(),
+                };
+                let w64 = Width::new(64).unwrap();
+                match parse_base(&text, radix, w64, Signedness::Unsigned) {
+                    Ok(v) => {
+                        self.float_value = f64::from_bits(v.raw() as u64);
+                        self.status = None;
+                        self.refresh(Some(field));
+                    }
+                    Err(e) => self.error(e),
+                }
+            }
+            Field::Fixed => unreachable!("fixed field hidden in float mode"),
         }
     }
 
@@ -334,24 +475,39 @@ impl App {
         if trimmed.is_empty() {
             return;
         }
+        if self.is_float_mode() {
+            match eval_float(&self.expr, self.float_value) {
+                Ok(x) => {
+                    self.float_value = x;
+                    self.expr_error = None;
+                    self.status = None;
+                    self.push_history(trimmed, HistoryResult::Float(x));
+                    self.refresh(None);
+                }
+                Err(e) => self.expr_error = Some(format!("Invalid expression: {e}")),
+            }
+            return;
+        }
         match eval(&self.expr, self.width, self.sign, self.value) {
             Ok(v) => {
                 self.value = v;
                 self.expr_error = None;
                 self.status = None;
-                self.push_history(trimmed, v);
+                self.push_history(
+                    trimmed,
+                    HistoryResult::Integer {
+                        value: v,
+                        sign: self.sign,
+                    },
+                );
                 self.refresh(None);
             }
             Err(e) => self.expr_error = Some(format!("Invalid expression: {e}")),
         }
     }
 
-    fn push_history(&mut self, expr: String, value: Value) {
-        self.history.push(HistoryEntry {
-            expr,
-            value,
-            sign: self.sign,
-        });
+    fn push_history(&mut self, expr: String, result: HistoryResult) {
+        self.history.push(HistoryEntry { expr, result });
         const MAX_HISTORY: usize = 200;
         if self.history.len() > MAX_HISTORY {
             let excess = self.history.len() - MAX_HISTORY;
@@ -359,13 +515,22 @@ impl App {
         }
     }
 
-    /// Bring a history entry back: restore its value, width, sign, and text.
+    /// Bring a history entry back: restore its mode, value, and text.
     fn recall(&mut self, entry: HistoryEntry) {
-        self.value = entry.value;
-        self.width = entry.value.width();
-        self.sign = entry.sign;
-        if self.frac_bits > self.width.bits() {
-            self.frac_bits = self.width.bits();
+        match entry.result {
+            HistoryResult::Integer { value, sign } => {
+                self.number_mode = NumberMode::Integer;
+                self.value = value;
+                self.width = value.width();
+                self.sign = sign;
+                if self.frac_bits > self.width.bits() {
+                    self.frac_bits = self.width.bits();
+                }
+            }
+            HistoryResult::Float(x) => {
+                self.number_mode = NumberMode::Float;
+                self.float_value = x;
+            }
         }
         self.expr = entry.expr;
         self.expr_error = None;
@@ -380,6 +545,19 @@ impl App {
 
         let accent = theme::accent(ui.ctx());
         let on_accent = theme::on_accent(ui.ctx());
+
+        // The int/float mode toggle lives next to the expression it governs, so
+        // switching tasks is one click away from where you type.
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Mode").weak());
+            if ui.selectable_label(!self.is_float_mode(), "int").clicked() {
+                self.set_number_mode(NumberMode::Integer);
+            }
+            if ui.selectable_label(self.is_float_mode(), "float").clicked() {
+                self.set_number_mode(NumberMode::Float);
+            }
+        });
+        ui.add_space(6.0);
 
         ui.horizontal(|ui| {
             let resp = ui.add(
@@ -485,7 +663,13 @@ impl App {
                                 recall_idx = Some(i);
                             }
                             expr.on_hover_text("Click to recall this expression");
-                            if let Some(label) = value_lines(ui, entry.value, entry.sign, base) {
+                            let line_copied = match entry.result {
+                                HistoryResult::Integer { value, sign } => {
+                                    value_lines(ui, value, sign, base)
+                                }
+                                HistoryResult::Float(x) => float_value_lines(ui, x, base),
+                            };
+                            if let Some(label) = line_copied {
                                 copied = Some(label);
                             }
                         });
@@ -508,6 +692,18 @@ impl App {
     fn format_section(&mut self, ui: &mut egui::Ui) {
         section_label(ui, "FORMAT");
         let accent = theme::accent(ui.ctx());
+
+        // In float mode the value is a full-precision f64, so the integer-only
+        // controls below (width, sign, fixed-point) don't apply.
+        if self.is_float_mode() {
+            ui.label(
+                egui::RichText::new(
+                    "Full-precision f64. Width, sign, and fixed-point apply to integer mode.",
+                )
+                .weak(),
+            );
+            return;
+        }
 
         // Width: presets, then a draggable "{n}-bit" scrubber (3px per bit).
         ui.horizontal_wrapped(|ui| {
@@ -957,17 +1153,24 @@ impl eframe::App for App {
                         (ui.available_width() - ui.spacing().item_spacing.x) / 2.0,
                     );
                 }
+                // The bit grid edits the integer value, so it is hidden in
+                // float mode (where the value is an f64, not width-bound bits).
+                let show_bits = !self.is_float_mode();
                 if two_col {
                     ui.columns(2, |cols| {
                         Self::section(&mut cols[0], |ui| self.current_value_compact(ui));
-                        Self::section(&mut cols[0], |ui| self.bits_section(ui));
+                        if show_bits {
+                            Self::section(&mut cols[0], |ui| self.bits_section(ui));
+                        }
 
                         Self::section(&mut cols[1], |ui| self.format_section(ui));
                         Self::section(&mut cols[1], |ui| self.history_panel(ui));
                     });
                 } else {
                     Self::section(ui, |ui| self.current_value_compact(ui));
-                    Self::section(ui, |ui| self.bits_section(ui));
+                    if show_bits {
+                        Self::section(ui, |ui| self.bits_section(ui));
+                    }
                     Self::section(ui, |ui| self.format_section(ui));
                     Self::section(ui, |ui| self.history_panel(ui));
                 }
@@ -981,6 +1184,7 @@ impl eframe::App for App {
         storage.set_string("theme_mode", self.theme_mode.key().to_owned());
         storage.set_string("history_base", self.history_base.key().to_owned());
         storage.set_string("view_mode", self.view_mode.key().to_owned());
+        storage.set_string("number_mode", self.number_mode.key().to_owned());
         if let Some(sz) = self.custom_size {
             storage.set_string("custom_w", sz.x.to_string());
             storage.set_string("custom_h", sz.y.to_string());
@@ -1060,6 +1264,31 @@ fn value_lines(
         HistoryBase::Dec => line(ui, "DEC", value.to_dec(sign)),
         HistoryBase::Bin => line(ui, "BIN", value.to_bin()),
         HistoryBase::Oct => line(ui, "OCT", value.to_oct()),
+    }
+    copied
+}
+
+/// Render a float result: the full-precision decimal plus, for the bit bases,
+/// its f64 IEEE-754 pattern. Mirrors [`value_lines`] for float history entries.
+fn float_value_lines(ui: &mut egui::Ui, x: f64, base: HistoryBase) -> Option<&'static str> {
+    let bits = f64_to_value(x);
+    let mut copied = None;
+    let mut line = |ui: &mut egui::Ui, label: &'static str, text: String| {
+        if value_line(ui, label, text) {
+            copied = Some(label);
+        }
+    };
+    match base {
+        HistoryBase::All => {
+            line(ui, "DEC", format!("{x}"));
+            line(ui, "HEX", bits.to_hex());
+            line(ui, "BIN", bits.to_bin());
+            line(ui, "OCT", bits.to_oct());
+        }
+        HistoryBase::Dec => line(ui, "DEC", format!("{x}")),
+        HistoryBase::Hex => line(ui, "HEX", bits.to_hex()),
+        HistoryBase::Bin => line(ui, "BIN", bits.to_bin()),
+        HistoryBase::Oct => line(ui, "OCT", bits.to_oct()),
     }
     copied
 }
