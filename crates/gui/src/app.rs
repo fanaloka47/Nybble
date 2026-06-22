@@ -563,7 +563,7 @@ impl App {
             let resp = ui.add(
                 egui::TextEdit::singleline(&mut self.expr)
                     .font(egui::FontId::new(22.0, egui::FontFamily::Monospace))
-                    .desired_width(ui.available_width() - 112.0)
+                    .desired_width(ui.available_width() - 60.0)
                     .hint_text(
                         egui::RichText::new("0xFF & (1 << 3)")
                             .font(egui::FontId::new(16.0, egui::FontFamily::Monospace)),
@@ -571,7 +571,7 @@ impl App {
                     .vertical_align(egui::Align::Center)
                     .margin(egui::vec2(10.0, 8.0)),
             );
-            paint_input_stripe(ui, resp.rect, accent);
+            paint_input_frame(ui, resp.rect, accent);
             // Editing the expression clears any stale "invalid" message — we
             // only validate at evaluate time, never while typing.
             if resp.changed() {
@@ -581,12 +581,15 @@ impl App {
                 resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             let clicked = ui
                 .add_sized(
-                    [96.0, 40.0],
+                    [44.0, 40.0],
                     egui::Button::new(
-                        egui::RichText::new("Evaluate").size(16.0).color(on_accent),
+                        // `↵` lives only in the bundled monospace (Hack) font, so
+                        // render it with the monospace family or it won't be found.
+                        egui::RichText::new("↵").size(24.0).monospace().color(on_accent),
                     )
                     .fill(accent),
                 )
+                .on_hover_text("Evaluate (Enter)")
                 .clicked();
             if clicked || entered {
                 self.eval_expr();
@@ -825,7 +828,7 @@ impl App {
                 .desired_width(f32::INFINITY)
                 .margin(egui::vec2(8.0, 6.0)),
         );
-        paint_input_stripe(ui, resp.rect, accent);
+        paint_input_frame(ui, resp.rect, accent);
         if resp.changed() {
             self.on_field_edit(field);
         }
@@ -921,7 +924,7 @@ impl App {
                     .font(egui::TextStyle::Monospace)
                     .desired_width(f32::INFINITY),
             );
-            paint_input_stripe(ui, resp.rect, accent);
+            paint_input_frame(ui, resp.rect, accent);
             if resp.changed() {
                 self.on_fixed_edit();
             }
@@ -1223,8 +1226,19 @@ fn field_label(field: Field) -> &'static str {
 
 /// Paint a 3 px accent-colored stripe on the left edge of `rect` to mark the
 /// field as an editable input.
-fn paint_input_stripe(ui: &mut egui::Ui, rect: egui::Rect, accent: egui::Color32) {
-    ui.painter().rect_filled(
+/// Decorate an editable field: a subtle full outline so its bounds are easy to
+/// read, plus an accent stripe down the left edge marking it as editable.
+fn paint_input_frame(ui: &mut egui::Ui, rect: egui::Rect, accent: egui::Color32) {
+    let painter = ui.painter();
+    // Outline the whole box so its edges are legible against the card fill.
+    painter.rect_stroke(
+        rect,
+        egui::CornerRadius::same(4),
+        egui::Stroke::new(1.0, accent.gamma_multiply(0.55)),
+        egui::StrokeKind::Inside,
+    );
+    // Accent stripe down the left edge.
+    painter.rect_filled(
         egui::Rect::from_min_max(rect.left_top(), egui::pos2(rect.left() + 3.0, rect.bottom())),
         egui::CornerRadius::same(2),
         accent,
