@@ -8,10 +8,12 @@
 
 pub mod expr;
 pub mod fixed;
+pub mod float;
 pub mod ops;
 pub mod parse;
 pub mod value;
 
 pub use expr::{eval, EvalError};
+pub use float::{eval_float, f64_to_value};
 pub use parse::{parse_literal, ParseError};
 pub use value::{Signedness, Value, Width};

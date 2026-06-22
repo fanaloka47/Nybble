@@ -31,6 +31,8 @@ pub enum EvalError {
     UnknownIdent(String),
     /// Division or remainder by zero.
     DivByZero,
+    /// A bitwise/shift operator was used in float mode, where it has no meaning.
+    BitwiseInFloatMode(char),
 }
 
 impl fmt::Display for EvalError {
@@ -44,6 +46,9 @@ impl fmt::Display for EvalError {
             EvalError::UnbalancedParen => write!(f, "unbalanced parentheses"),
             EvalError::UnknownIdent(s) => write!(f, "unknown name '{s}'"),
             EvalError::DivByZero => write!(f, "division by zero"),
+            EvalError::BitwiseInFloatMode(c) => {
+                write!(f, "'{c}' is not available in float mode")
+            }
         }
     }
 }
