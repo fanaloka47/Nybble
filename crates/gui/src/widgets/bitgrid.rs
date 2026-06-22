@@ -5,8 +5,13 @@ use egui::{Color32, CornerRadius, Sense, Vec2};
 use powercalc_core::Value;
 
 const CELL: f32 = 26.0; // bit cell size (square-ish)
+const CELL_H: f32 = 28.0; // bit cell height
 const CELL_GAP: f32 = 2.0; // gap between bits inside a nibble group
 const GROUP_GAP: f32 = 6.0; // gap between nibble groups
+// How far the index number rises into the cell's empty lower padding so it sits
+// just under the digit rather than under the cell's bottom edge. Larger = closer
+// to the digit (eventually overlapping it).
+const MARKER_RISE: f32 = 8.0;
 const BAR_H: f32 = 13.0; // visual bit bar height
 const BAR_NIBBLE_GAP: f32 = 4.0; // gap between nibbles in the bar
 
@@ -81,7 +86,7 @@ pub fn bit_grid(ui: &mut egui::Ui, value: Value, accent: Color32) -> Option<Valu
                         let text = egui::RichText::new(if set { "1" } else { "0" })
                             .monospace()
                             .color(if set { on_accent } else { ui.visuals().text_color() });
-                        let mut btn = egui::Button::new(text).min_size(Vec2::new(CELL, 28.0));
+                        let mut btn = egui::Button::new(text).min_size(Vec2::new(CELL, CELL_H));
                         if set {
                             btn = btn.fill(accent);
                         }
@@ -104,6 +109,30 @@ pub fn bit_grid(ui: &mut egui::Ui, value: Value, accent: Color32) -> Option<Valu
                 row_w - avail
             );
         }
+
+        // Index markers under each nibble group (every 4 bits), like the
+        // Windows calculator: each number sits under the group's lowest bit.
+        // Zero the layout's vertical gap *before* the row so the numbers hug the
+        // cells above (this gap is on the outer ui, not inside the row).
+        let marker_color = ui.visuals().weak_text_color();
+        let prev_gap = ui.spacing().item_spacing.y;
+        ui.spacing_mut().item_spacing.y = 0.0;
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = GROUP_GAP;
+            for group in row {
+                let base = *group.last().unwrap();
+                let (rect, _) = ui.allocate_exact_size(Vec2::new(group_w, 11.0), Sense::hover());
+                ui.painter().text(
+                    egui::pos2(rect.right() - CELL / 4.0, rect.top() - MARKER_RISE),
+                    egui::Align2::CENTER_TOP,
+                    base.to_string(),
+                    egui::FontId::monospace(10.0),
+                    marker_color,
+                );
+            }
+        });
+        ui.spacing_mut().item_spacing.y = prev_gap;
+        ui.add_space(6.0);
     }
 
     toggled.map(|b| value.with_raw(value.raw() ^ (1u128 << b)))
