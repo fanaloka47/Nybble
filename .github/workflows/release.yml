@@ -1,0 +1,40 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write            # needed to create the Release and upload assets
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard tag == Cargo version
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          crate="$(grep -m1 '^version' crates/gui/Cargo.toml | cut -d'"' -f2)"
+          test "$tag" = "$crate" || { echo "tag $tag != crate $crate"; exit 1; }
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release -p powercalc-gui
+
+      - name: Package asset (zip named with the target triple)
+        shell: bash
+        run: |
+          mkdir dist
+          cp target/release/powercalc.exe dist/
+          cd dist
+          7z a "powercalc-x86_64-pc-windows-msvc.zip" powercalc.exe
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/powercalc-x86_64-pc-windows-msvc.zip
+          generate_release_notes: true

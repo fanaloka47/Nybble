@@ -11,6 +11,13 @@ use powercalc_core::{eval, eval_float, f64_to_value, fixed, Signedness, Value, W
 use crate::theme::{self, ThemeMode};
 use crate::widgets;
 
+enum UpdateMsg {
+    Available(String),
+    UpToDate,
+    Failed,
+    Applied,
+}
+
 /// The editable surfaces that show the current value. Used to skip refreshing
 /// the field the user is actively typing into.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -219,6 +226,12 @@ pub struct App {
     /// event loop is running (calling send_viewport_cmd in new() resets the
     /// Wayland connection before the loop is ready).
     startup_resize_pending: bool,
+
+    // Auto-update
+    auto_check_updates: bool,
+    update_rx: Option<std::sync::mpsc::Receiver<UpdateMsg>>,
+    update_available: Option<String>,
+    updating: bool,
 }
 
 impl App {
@@ -246,6 +259,10 @@ impl App {
                 let h = s.get_string("custom_h")?.parse::<f32>().ok()?;
                 Some(egui::vec2(w, h))
             });
+        let auto_check_updates = storage
+            .and_then(|s| s.get_string("auto_check_updates"))
+            .map(|v| v != "false")
+            .unwrap_or(true);
 
         let width = Width::new(32).unwrap();
         let mut app = Self {
@@ -275,9 +292,58 @@ impl App {
             custom_size,
             resize_cooldown: 0,
             startup_resize_pending: true,
+            auto_check_updates,
+            update_rx: None,
+            update_available: None,
+            updating: false,
         };
         app.refresh(None);
+        if auto_check_updates {
+            app.spawn_update_check(cc.egui_ctx.clone());
+        }
         app
+    }
+
+    fn spawn_update_check(&mut self, ctx: egui::Context) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.update_rx = Some(rx);
+        std::thread::spawn(move || {
+            let msg = match crate::update::newer_release() {
+                Ok(Some(v)) => UpdateMsg::Available(v),
+                Ok(None) => UpdateMsg::UpToDate,
+                Err(_) => UpdateMsg::Failed,
+            };
+            let _ = tx.send(msg);
+            ctx.request_repaint();
+        });
+    }
+
+    fn drain_update_rx(&mut self) {
+        if let Some(rx) = &self.update_rx {
+            while let Ok(msg) = rx.try_recv() {
+                match msg {
+                    UpdateMsg::Available(v) => self.update_available = Some(v),
+                    UpdateMsg::UpToDate | UpdateMsg::Failed => {}
+                    UpdateMsg::Applied => {
+                        crate::update::restart();
+                    }
+                }
+            }
+        }
+    }
+
+    fn spawn_apply_update(&mut self, ctx: egui::Context) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.update_rx = Some(rx);
+        self.updating = true;
+        std::thread::spawn(move || {
+            let msg = match crate::update::apply_update() {
+                Ok(_) => UpdateMsg::Applied,
+                Err(_) => UpdateMsg::Failed,
+            };
+            let _ = tx.send(msg);
+            ctx.request_repaint();
+        });
     }
 
     /// Wrap a section's contents in a rounded, filled "card".
@@ -1043,6 +1109,7 @@ impl App {
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.drain_update_rx();
         theme::apply(ui.ctx(), self.theme_mode);
 
         // On the very first frame the event loop is running — safe to resize.
@@ -1145,6 +1212,37 @@ impl eframe::App for App {
                                     egui::ViewportCommand::InnerSize(new_size),
                                 );
                             }
+
+                            // Update banner / controls (right-to-left, so leftmost = last).
+                            if let Some(ref v) = self.update_available.clone() {
+                                let label = if self.updating {
+                                    "Updating…".to_owned()
+                                } else {
+                                    format!("Update & restart (v{v})")
+                                };
+                                if ui
+                                    .add_enabled(
+                                        !self.updating,
+                                        egui::Button::new(
+                                            egui::RichText::new(label)
+                                                .color(theme::on_accent(ui.ctx())),
+                                        )
+                                        .fill(theme::accent(ui.ctx())),
+                                    )
+                                    .on_hover_text("Download the new version and restart")
+                                    .clicked()
+                                {
+                                    self.spawn_apply_update(ui.ctx().clone());
+                                }
+                            } else if !self.updating && self.update_rx.is_none() {
+                                if ui
+                                    .button("Check for updates")
+                                    .on_hover_text("Check GitHub Releases for a newer version")
+                                    .clicked()
+                                {
+                                    self.spawn_update_check(ui.ctx().clone());
+                                }
+                            }
                         },
                     );
                 });
@@ -1204,6 +1302,10 @@ impl eframe::App for App {
         storage.set_string("history_base", self.history_base.key().to_owned());
         storage.set_string("view_mode", self.view_mode.key().to_owned());
         storage.set_string("number_mode", self.number_mode.key().to_owned());
+        storage.set_string(
+            "auto_check_updates",
+            if self.auto_check_updates { "true" } else { "false" }.to_owned(),
+        );
         if let Some(sz) = self.custom_size {
             storage.set_string("custom_w", sz.x.to_string());
             storage.set_string("custom_h", sz.y.to_string());

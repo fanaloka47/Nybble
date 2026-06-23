@@ -24,6 +24,11 @@ eframe = { version = "0.34", default-features = false, features = [
     "persistence",
 ] }
 egui = "0.34"
+# rustls keeps the Windows build self-contained; zip-deflate matches the CI asset format.
+self_update = { version = "0.41", default-features = false, features = [
+    "rustls",
+    "compression-zip-deflate",
+] }
 
 # The x11 backend is Linux-only; keep it off Windows/macOS builds. Cargo unions
 # features for the same crate, so on Linux eframe still gets x11 as before.

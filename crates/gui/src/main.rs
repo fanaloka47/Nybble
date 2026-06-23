@@ -7,6 +7,7 @@
 
 mod app;
 mod theme;
+mod update;
 mod widgets;
 
 use app::App;

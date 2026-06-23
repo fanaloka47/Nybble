@@ -38,9 +38,35 @@ cargo build --release           # produce target/release/powercalc
 
 The GUI uses the `glow` (OpenGL) backend for broad compatibility, including WSLg.
 
+## Releasing (Windows)
+
+1. Bump `version` in `crates/gui/Cargo.toml` (e.g. `0.1.0` → `0.1.1`).
+2. Commit. Then:
+   ```sh
+   git tag v0.1.1
+   git push origin main --tags
+   ```
+3. CI builds `powercalc.exe`, zips it as `powercalc-x86_64-pc-windows-msvc.zip`, and
+   publishes a GitHub Release with auto-generated notes.
+4. Colleagues' apps detect the new release on next launch and offer a one-click update.
+
+The tag version must match `Cargo.toml`; the CI guard rejects mismatches before building.
+
+## Auto-updating
+
+On launch, the app silently checks GitHub Releases. If a newer version exists, a
+**"Update & restart"** button appears in the top-right corner. Clicking it downloads the
+new binary, swaps it in, and restarts the app. The check can be disabled from the
+settings (persisted across sessions).
+
+A **"Check for updates"** button is always available in the header when no check is
+currently running.
+
 ## Notes / limits
 
 - Values are capped at **128 bits** for now. Wider buses (256/512-bit) would need an
   arbitrary-precision backend — a possible future extension.
 - Fixed-point conversion goes through `f64`, so very wide values or many fractional bits
   can lose precision in the *displayed* real (the raw bits remain exact).
+- The Windows binary is unsigned; the first run shows a SmartScreen "unknown publisher"
+  prompt (More info → Run anyway). Acceptable for internal colleagues.

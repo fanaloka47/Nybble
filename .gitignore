@@ -19,3 +19,6 @@ Thumbs.db
 
 _bmad
 .claude
+
+# Local planning docs — kept in-repo for convenience, never published
+/plans/
