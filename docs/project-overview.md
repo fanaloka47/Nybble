@@ -1,6 +1,6 @@
 # PowerCalc — Project Overview
 
-_Generated: 2026-06-16 · Scan level: exhaustive_
+_Generated: 2026-06-16 · Updated: 2026-06-23 (full rescan) · Scan level: exhaustive_
 
 ## Purpose
 
@@ -14,14 +14,15 @@ widths/signedness, and run bitwise/arithmetic expressions — on Windows and Lin
 
 ## Executive summary
 
-The codebase is a small (~2,100 LOC) **Rust Cargo workspace** with a deliberate
+The codebase is a small (~3,200 LOC) **Rust Cargo workspace** with a deliberate
 two-layer split:
 
 - **`powercalc-core`** — a pure, UI-free numeric library. It holds the canonical
   value model (a width-masked `u128`), all width-correct operations, literal
-  parsing, a hand-rolled expression evaluator (tokenizer + Pratt parser), and
-  fixed-point (Qm.n) conversion. It has **no GUI dependencies** and carries the
-  entire test suite (35 unit tests).
+  parsing, a hand-rolled integer expression evaluator (tokenizer + Pratt parser),
+  a parallel full-precision **`f64` evaluator** (float mode), and fixed-point
+  (Qm.n) conversion. It has **no GUI dependencies** and carries the entire test
+  suite (43 unit tests).
 - **`powercalc-gui`** — a thin [`eframe`](https://crates.io/crates/eframe) /
   [`egui`](https://github.com/emilk/egui) 0.34 immediate-mode desktop app. It
   owns application state and rendering only; every numeric decision is delegated
@@ -38,8 +39,8 @@ tested without the GUI.** The GUI is a presentation layer over the library.
 | Core library    | `powercalc-core` (no deps)         | 0.1.0    | Dependency-free numeric logic |
 | GUI framework   | `eframe` / `egui`                  | 0.34     | Immediate-mode GUI |
 | Render backend  | `glow` (OpenGL)                    | —        | Chosen for WSLg/broad compatibility |
-| Windowing       | `winit` via eframe (x11 + wayland) | —        | `accesskit` disabled (needs D-Bus) |
-| Persistence     | eframe `persistence` feature       | —        | Stores theme + history-base prefs |
+| Windowing       | `winit` via eframe (x11 only)      | —        | `wayland` & `accesskit` disabled (WSL stability / D-Bus) |
+| Persistence     | eframe `persistence` feature       | —        | Stores theme, history-base, view-mode, number-mode, custom size |
 | Build / test    | Cargo                              | —        | `cargo test`, `cargo build --release` |
 
 ## Architecture type

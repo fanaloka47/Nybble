@@ -10,7 +10,7 @@
       "root_path": "crates/core",
       "kind": "lib",
       "dependencies": [],
-      "description": "Pure, UI-free numeric core: value model, ops, parsing, expression evaluator, fixed-point. Carries all 35 unit tests."
+      "description": "Pure, UI-free numeric core: value model, ops, parsing, integer expression evaluator, full-precision f64 evaluator (float mode), fixed-point. Carries all 43 unit tests."
     },
     {
       "part_id": "gui",
@@ -20,7 +20,7 @@
       "root_path": "crates/gui",
       "kind": "bin",
       "dependencies": ["powercalc-core", "eframe 0.34", "egui 0.34"],
-      "description": "eframe/egui immediate-mode desktop app over powercalc-core. Glow (OpenGL) backend; x11 + wayland; persistence for theme/history-base."
+      "description": "eframe/egui immediate-mode desktop app over powercalc-core. Glow (OpenGL) backend; x11 only (wayland dropped); int/float modes; persistence for theme/history-base/view-mode/number-mode/custom-size."
     }
   ],
   "integration_points": [
@@ -28,7 +28,7 @@
       "from": "gui",
       "to": "core",
       "type": "Cargo path dependency (in-process)",
-      "details": "powercalc-core = { path = \"../core\" }; app.rs calls eval, fixed::to_real/from_real, Value methods. One-way dependency."
+      "details": "powercalc-core = { path = \"../core\" }; app.rs calls eval, eval_float, f64_to_value, fixed::to_real/from_real, Value methods. One-way dependency."
     }
   ]
 }

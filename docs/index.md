@@ -1,10 +1,11 @@
 # PowerCalc — Documentation Index
 
-_Generated: 2026-06-16 · Scan level: exhaustive · Primary AI-context entry point_
+_Generated: 2026-06-16 · Updated: 2026-06-23 (full rescan) · Scan level: exhaustive · Primary AI-context entry point_
 
 PowerCalc is a fast native desktop calculator for working across number bases
-(hex/dec/bin/oct) with bit-width, signedness, an interactive bit grid, an
-expression evaluator, and fixed-point — built for FPGA/hardware work.
+(hex/dec/bin/oct) with bit-width, signedness, an interactive bit grid, an integer
+and a full-precision float expression evaluator, and fixed-point — built for
+FPGA/hardware work.
 
 ## Project overview
 
@@ -12,7 +13,7 @@ expression evaluator, and fixed-point — built for FPGA/hardware work.
 - **Primary language:** Rust (edition 2021)
 - **Architecture:** layered — pure numeric core + thin eframe/egui desktop UI
 - **Binary:** `powercalc` (from `powercalc-gui`)
-- **Tests:** 35 unit tests, all in `powercalc-core`
+- **Tests:** 43 unit tests, all in `powercalc-core`
 
 ## Quick reference by part
 
@@ -20,15 +21,18 @@ expression evaluator, and fixed-point — built for FPGA/hardware work.
 - **Root:** `crates/core`
 - **Tech:** Rust, no dependencies (std only)
 - **Entry/API:** `crates/core/src/lib.rs` re-exports `Value`, `Width`,
-  `Signedness`, `eval`, `EvalError`, `parse_literal`, `ParseError`
-- **Holds:** value model, width-correct ops, literal parsing, expression
-  evaluator (tokenizer + Pratt parser), fixed-point — and the whole test suite
+  `Signedness`, `eval`, `EvalError`, `eval_float`, `f64_to_value`,
+  `parse_literal`, `ParseError`
+- **Holds:** value model, width-correct ops, literal parsing, an integer
+  expression evaluator (tokenizer + Pratt parser), a full-precision `f64`
+  evaluator (float mode), fixed-point — and the whole test suite
 
 ### gui — `powercalc-gui` (desktop)
 - **Root:** `crates/gui`
-- **Tech:** `eframe`/`egui` 0.34, Glow (OpenGL) backend, x11 + wayland
+- **Tech:** `eframe`/`egui` 0.34, Glow (OpenGL) backend, x11 (wayland dropped)
 - **Entry point:** `crates/gui/src/main.rs` → `eframe::run_native` → `app::App`
-- **Holds:** app state + immediate-mode UI; delegates all math to core
+- **Holds:** app state + immediate-mode UI (int/float modes, view modes, theming);
+  delegates all math to core
 
 ## Generated documentation
 
@@ -52,7 +56,7 @@ expression evaluator, and fixed-point — built for FPGA/hardware work.
 
 ```sh
 cargo run -p powercalc-gui      # launch the app
-cargo test                      # run the core test suite (35 tests)
+cargo test                      # run the core test suite (43 tests)
 cargo build --release           # produce target/release/powercalc
 ```
 

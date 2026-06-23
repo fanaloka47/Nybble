@@ -1,6 +1,6 @@
 # Integration Architecture (core ↔ gui)
 
-_Generated: 2026-06-16 · Scan level: exhaustive_
+_Generated: 2026-06-16 · Updated: 2026-06-23 (full rescan) · Scan level: exhaustive_
 
 PowerCalc is a two-part Cargo workspace. This document describes how the parts
 connect. The integration is **in-process Rust**: there is no network, IPC, or
@@ -11,7 +11,7 @@ serialization boundary — `powercalc-gui` links `powercalc-core` directly.
 | From | To | Type | Details |
 |------|----|------|---------|
 | `powercalc-gui` | `powercalc-core` | Cargo path dependency | `powercalc-core = { path = "../core" }` in `crates/gui/Cargo.toml`. |
-| `app.rs` | `core` public API | Direct function/method calls | `use powercalc_core::{eval, fixed, Signedness, Value, Width};` |
+| `app.rs` | `core` public API | Direct function/method calls | `use powercalc_core::{eval, eval_float, f64_to_value, fixed, Signedness, Value, Width};` |
 
 ## Dependency direction
 
@@ -26,28 +26,34 @@ without a display.
 
 ## Data flow
 
-A single `Value` (held in `App`) is the shared currency. Every interaction follows
-the same loop: **mutate the canonical `Value` via core → `refresh()` rewrites the
-text buffers → the next frame redraws all views from `Value`.**
+A single `Value` (held in `App`) is the shared currency in **integer mode**. Every
+interaction follows the same loop: **mutate the canonical `Value` via core →
+`refresh()` rewrites the text buffers → the next frame redraws all views from
+`Value`.** In **float mode** the parallel `float_value: f64` is the currency
+instead, evaluated via `core::eval_float` and rendered through `f64_to_value` for
+the bit bases.
 
 ```
                  ┌──────────────────────── App state (gui) ─────────────────────────┐
-   user input    │  value: Value   width: Width   sign: Signedness   frac_bits      │
-   ───────────▶  │  text buffers: hex/dec/bin/oct/fixed_input/expr                   │
+   user input    │  value: Value   width   sign   frac_bits   float_value: f64       │
+   ───────────▶  │  number_mode: Integer | Float                                     │
+                 │  text buffers: hex/dec/bin/oct/fixed_input/expr                   │
                  └───────────────────────────────┬──────────────────────────────────┘
                                                   │ calls into core
                  ┌────────────────────────────────▼─────────────────────────────────┐
-   Expression line ──▶ core::eval(expr, width, sign, ans=value) ──▶ Result<Value>    │
-   Base field edit ──▶ gui parse_base(...) ──▶ Value::new(raw, width)                 │
-   Fixed "Real"   ──▶ core::fixed::from_real(real, width, frac_bits) ──▶ Value       │
-   Bit click      ──▶ widgets::bit_grid(...) ──▶ value.with_raw(raw ^ (1<<b))         │
-   Width preset   ──▶ Value::with_width(width)                                        │
-   Sign toggle    ──▶ (re-render only; affects to_dec / >> / div)                     │
+   Expression (int)  ──▶ core::eval(expr, width, sign, ans=value) ──▶ Result<Value>  │
+   Expression (float)──▶ core::eval_float(expr, ans=float_value) ──▶ Result<f64>     │
+   Base field edit   ──▶ gui parse_base(...) ──▶ Value::new(raw, width)              │
+   Fixed "real"      ──▶ core::fixed::from_real(real, width, frac_bits) ──▶ Value    │
+   Bit click         ──▶ widgets::bit_grid(...) ──▶ value.with_raw(raw ^ (1<<b))     │
+   Width preset/drag ──▶ Value::with_width(width)                                    │
+   Sign toggle       ──▶ (re-render only; affects to_dec / >> / div)                 │
                  └────────────────────────────────┬─────────────────────────────────┘
-                                                  │ new Value
+                                                  │ new Value / f64
                  ┌────────────────────────────────▼─────────────────────────────────┐
-   refresh(skip) rewrites buffers via Value::to_hex/to_bin/to_oct/to_dec(sign) and   │
-   fixed::to_real; views redraw next frame (bit grid reads value.raw()).             │
+   refresh(skip): integer mode → Value::to_hex/to_bin/to_oct/to_dec(sign) +          │
+   fixed::to_real; float mode → format!(f64) for DEC and f64_to_value(x).to_hex/…    │
+   for the bit bases. Views redraw next frame (bit grid reads value.raw()).          │
                  └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -55,9 +61,11 @@ text buffers → the next frame redraws all views from `Value`.**
 
 | GUI trigger | Core call |
 |-------------|-----------|
-| Evaluate expression | `eval(&expr, width, sign, value)` |
-| Render decimal | `value.to_dec(sign)` |
-| Render hex/bin/oct | `value.to_hex()` / `to_bin()` / `to_oct()` |
+| Evaluate expression (integer mode) | `eval(&expr, width, sign, value)` |
+| Evaluate expression (float mode) | `eval_float(&expr, float_value)` |
+| Render integer decimal | `value.to_dec(sign)` |
+| Render integer hex/bin/oct | `value.to_hex()` / `to_bin()` / `to_oct()` |
+| Render float bit bases | `f64_to_value(x).to_hex()` / `to_bin()` / `to_oct()` |
 | Fixed-point display | `fixed::to_real(value, frac_bits, sign)` |
 | Fixed-point entry | `fixed::from_real(real, width, frac_bits)` |
 | Change width | `value.with_width(Width::clamped(bits))` |

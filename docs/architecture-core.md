@@ -1,13 +1,15 @@
 # Architecture — `powercalc-core`
 
-_Generated: 2026-06-16 · Part type: library · Scan level: exhaustive_
+_Generated: 2026-06-16 · Updated: 2026-06-23 (full rescan) · Part type: library · Scan level: exhaustive_
 
 ## Executive summary
 
 `powercalc-core` is a dependency-free Rust library that holds **all** of
 PowerCalc's numeric logic. It is designed to be fully exercised without a GUI and
-carries the entire automated test suite (35 unit tests across the modules). The
-GUI is a thin consumer of this crate.
+carries the entire automated test suite (43 unit tests across the modules). The
+GUI is a thin consumer of this crate. It now offers **two evaluators**: the
+width-bound integer evaluator (`expr`) and a full-precision `f64` evaluator
+(`float`) for the calculator's float mode.
 
 ## Technology stack
 
@@ -93,7 +95,28 @@ intentional Rust learning artifact).
   Leftover tokens after a complete parse → `UnexpectedToken` (e.g. `1 2`).
 - `EvalError` variants: `Parse(ParseError)`, `BadChar`, `LoneAngle`,
   `UnexpectedEof`, `UnexpectedToken`, `UnbalancedParen`, `UnknownIdent`,
-  `DivByZero`. Implements `Display` + `Error`, with `From<ParseError>`.
+  `DivByZero`, `BitwiseInFloatMode(char)` (a bitwise/shift operator used in float
+  mode). Implements `Display` + `Error`, with `From<ParseError>`. `EvalError` is
+  shared by both evaluators.
+
+### Float evaluation (`float.rs`)
+
+A parallel **full-precision `f64` evaluator** — the calculator's *float mode*. It
+reuses the same surface grammar as `expr` (`+ - * / %`, unary `-`, parentheses,
+and the `ans` identifier) but every value is an `f64`, so results keep full
+floating-point precision regardless of the active `Width`.
+
+- `eval_float(input, ans: f64) -> Result<f64, EvalError>` — its own
+  tokenizer + Pratt parser (precedence `+ -`(10) < `* / %`(20) < unary `-`(30)).
+- Numeric literals accept decimals and scientific notation (`1.5`, `1e6`,
+  `1.5e-3`) as well as base-prefixed/plain integers (`8`, `0xFF`, `0b1010`),
+  which are widened to `f64` via `parse_literal`.
+- Bitwise/shift operators (`& | ^ ~ << >>`) are **rejected** with
+  `EvalError::BitwiseInFloatMode(c)` — they have no meaning on floats.
+- IEEE specials are allowed: `1/0` yields `inf`, `0/0` yields `nan` (no error).
+- `f64_to_value(x: f64) -> Value` reinterprets an `f64`'s IEEE-754 bits as a
+  **64-bit** `Value`, so float results can be shown in hex/bin/oct through their
+  encoding (the integer `Width` does not apply to a float).
 
 ### Fixed-point (`fixed.rs`)
 
@@ -116,15 +139,18 @@ There is no database. The "data model" is the in-memory `Value`/`Width`/
 ## Testing strategy
 
 Every module ends with a `#[cfg(test)] mod tests`. Coverage by file: `value.rs`
-(10), `expr.rs` (8), `ops.rs` (7), `fixed.rs` (6), `parse.rs` (4) — 35 total.
-Tests assert hardware-style behaviours directly: masking/truncation, two's-
-complement round-trips, signed vs unsigned decimal for identical bits, logical vs
-arithmetic shift, rotate wraparound, operator precedence, mixed-base literals,
-`ans` substitution, error cases, and fixed-point round-trips. Run with
+(10), `expr.rs` (8), `float.rs` (8), `ops.rs` (7), `fixed.rs` (6), `parse.rs` (4)
+— 43 total. Tests assert hardware-style behaviours directly: masking/truncation,
+two's-complement round-trips, signed vs unsigned decimal for identical bits,
+logical vs arithmetic shift, rotate wraparound, operator precedence, mixed-base
+literals, `ans` substitution, error cases, fixed-point round-trips, and (for
+float) precedence, scientific-notation literals, integer widening, unary-minus,
+IEEE division-by-zero, bitwise rejection, and the `f64`→bits pattern. Run with
 `cargo test -p powercalc-core` (or `cargo test`).
 
 ## Public API surface
 
 Re-exported from `lib.rs`: `Value`, `Width`, `Signedness`, `eval`, `EvalError`,
-`parse_literal`, `ParseError`; plus the modules `expr`, `fixed`, `ops`, `parse`,
-`value`. Full catalog in [API Contracts — Core](./api-contracts-core.md).
+`eval_float`, `f64_to_value`, `parse_literal`, `ParseError`; plus the modules
+`expr`, `fixed`, `float`, `ops`, `parse`, `value`. Full catalog in
+[API Contracts — Core](./api-contracts-core.md).

@@ -1,6 +1,6 @@
 # API Contracts — `powercalc-core`
 
-_Generated: 2026-06-16 · Scan level: exhaustive_
+_Generated: 2026-06-16 · Updated: 2026-06-23 (full rescan) · Scan level: exhaustive_
 
 This is the public Rust API of the `powercalc-core` library — the contract the GUI
 (and any future consumer) depends on. There are no network/HTTP endpoints; the
@@ -11,11 +11,13 @@ This is the public Rust API of the `powercalc-core` library — the contract the
 ```rust
 pub mod expr;
 pub mod fixed;
+pub mod float;
 pub mod ops;
 pub mod parse;
 pub mod value;
 
 pub use expr::{eval, EvalError};
+pub use float::{eval_float, f64_to_value};
 pub use parse::{parse_literal, ParseError};
 pub use value::{Signedness, Value, Width};
 ```
@@ -123,14 +125,16 @@ pub fn eval(
 pub enum EvalError {
     Parse(ParseError),
     BadChar(char),
-    LoneAngle(char),     // `<`/`>` not doubled into a shift
+    LoneAngle(char),       // `<`/`>` not doubled into a shift
     UnexpectedEof,
     UnexpectedToken,
     UnbalancedParen,
-    UnknownIdent(String),// identifier other than `ans`
+    UnknownIdent(String),  // identifier other than `ans`
     DivByZero,
+    BitwiseInFloatMode(char), // `& | ^ ~ << >>` used in float-mode eval
 }
 // impl Display + std::error::Error + From<ParseError>
+// Shared by both `eval` and `eval_float`.
 ```
 
 **Operators** (loosest→tightest): `|` < `^` < `&` < `<< >>` < `+ -` < `* / %` <
@@ -138,6 +142,23 @@ unary `- ~` < primary. Primaries: literals, `ans` (current value, case-insensiti
 `(` … `)`. Width-masks every literal; `sign` drives `>>` and `/ %`.
 
 Example: `eval("0xFF & (1 << 3)", Width::new(32)?, Signedness::Unsigned, ans)` → `0x08`.
+
+## `float` module
+
+```rust
+pub fn eval_float(input: &str, ans: f64) -> Result<f64, EvalError>;
+pub fn f64_to_value(x: f64) -> Value;   // f64 IEEE-754 bits as a 64-bit Value
+```
+
+The calculator's **float mode**: a full-precision `f64` sibling to `eval`. Same
+surface grammar minus bitwise/shift: `+ - * / %`, unary `-`, parentheses, and the
+`ans` identifier. Literals accept decimals and scientific notation (`1.5`, `1e6`,
+`1.5e-3`) plus base-prefixed/plain integers widened to `f64`. Bitwise/shift
+operators raise `EvalError::BitwiseInFloatMode(c)`. IEEE specials are allowed
+(`1/0` → `inf`, `0/0` → `nan`). `f64_to_value` is for rendering a float result in
+hex/bin/oct via its 64-bit encoding (the active integer `Width` does not apply).
+
+Example: `eval_float("1500e6 * 8 / 1.024e6", 0.0)` → `11718.75`.
 
 ## `fixed` module
 
