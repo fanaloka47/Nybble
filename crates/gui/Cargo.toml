@@ -22,6 +22,10 @@ eframe = { version = "0.34", default-features = false, features = [
     "glow",
     "default_fonts",
     "persistence",
-    "x11",
 ] }
 egui = "0.34"
+
+# The x11 backend is Linux-only; keep it off Windows/macOS builds. Cargo unions
+# features for the same crate, so on Linux eframe still gets x11 as before.
+[target.'cfg(unix)'.dependencies]
+eframe = { version = "0.34", default-features = false, features = ["x11"] }

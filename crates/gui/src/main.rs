@@ -1,5 +1,10 @@
 //! PowerCalc desktop GUI entry point.
 
+// On Windows release builds, attach to the "windows" subsystem so launching the
+// app doesn't pop up a console window behind it. Inert on other platforms, and
+// left off in debug builds so stderr/PC_DEBUG output stays visible.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod app;
 mod theme;
 mod widgets;
