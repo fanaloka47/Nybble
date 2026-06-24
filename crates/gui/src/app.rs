@@ -205,6 +205,13 @@ pub struct App {
     /// `input.time` after which a transient toast auto-dismisses. Parse errors
     /// use [`f64::INFINITY`] so they persist until the next successful action.
     status_until: f64,
+    /// `input.time` until which the "✓ updated" flash on the current-value
+    /// section is visible. Set on every successful value update.
+    flash_until: f64,
+    /// Set to `true` by any direct value mutation; consumed at the top of
+    /// `current_value_compact` to start the flash (avoids needing `ui` in
+    /// the mutation methods, which don't have access to the current time).
+    value_just_changed: bool,
 
     /// `bits[hi:lo]` extraction range.
     range_hi: u32,
@@ -296,6 +303,8 @@ impl App {
             expr_error: None,
             status: None,
             status_until: 0.0,
+            flash_until: 0.0,
+            value_just_changed: false,
             range_hi: 7,
             range_lo: 0,
             width_scrub_accum: 0.0,
@@ -426,6 +435,7 @@ impl App {
     fn invalidate_expr(&mut self) {
         self.expr.clear();
         self.expr_error = None;
+        self.value_just_changed = true;
     }
 
     /// Show a persistent error toast (cleared on the next successful action).
@@ -559,10 +569,10 @@ impl App {
         }
     }
 
-    fn eval_expr(&mut self) {
+    fn eval_expr(&mut self) -> bool {
         let trimmed = self.expr.trim().to_owned();
         if trimmed.is_empty() {
-            return;
+            return false;
         }
         if self.is_float_mode() {
             match eval_float(&self.expr, self.float_value) {
@@ -572,10 +582,11 @@ impl App {
                     self.status = None;
                     self.push_history(trimmed, HistoryResult::Float(x));
                     self.refresh(None);
+                    return true;
                 }
                 Err(e) => self.expr_error = Some(format!("Invalid expression: {e}")),
             }
-            return;
+            return false;
         }
         match eval(&self.expr, self.width, self.sign, self.value) {
             Ok(v) => {
@@ -590,8 +601,12 @@ impl App {
                     },
                 );
                 self.refresh(None);
+                true
             }
-            Err(e) => self.expr_error = Some(format!("Invalid expression: {e}")),
+            Err(e) => {
+                self.expr_error = Some(format!("Invalid expression: {e}"));
+                false
+            }
         }
     }
 
@@ -680,7 +695,9 @@ impl App {
                 .on_hover_text("Evaluate (Enter)")
                 .clicked();
             if clicked || entered {
-                self.eval_expr();
+                if self.eval_expr() {
+                    self.flash_until = ui.input(|i| i.time) + 0.8;
+                }
                 resp.request_focus();
             }
         });
@@ -884,11 +901,28 @@ impl App {
 
     /// Current value: all four bases shown stacked, each independently editable.
     fn current_value_compact(&mut self, ui: &mut egui::Ui) {
-        section_label(ui, "CURRENT VALUE");
+        let now = ui.input(|i| i.time);
+        if self.value_just_changed {
+            self.flash_until = now + 0.8;
+            self.value_just_changed = false;
+        }
+        let flash_t = ((self.flash_until - now) / 0.8).clamp(0.0, 1.0) as f32;
+
+        ui.horizontal(|ui| {
+            section_label(ui, "CURRENT VALUE");
+            if flash_t > 0.0 {
+                let accent = theme::accent(ui.ctx());
+                let alpha = (flash_t * 255.0) as u8;
+                let color =
+                    egui::Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), alpha);
+                ui.label(egui::RichText::new("✓").small().monospace().color(color));
+                ui.ctx().request_repaint();
+            }
+        });
 
         for field in BASE_FIELDS {
             let label = field_label(field);
-            let (edit_changed, copy_clicked, buf_text) = {
+            let (edit_changed, enter_pressed, copy_clicked, buf_text) = {
                 let buf: &mut String = match field {
                     Field::Hex => &mut self.hex,
                     Field::Dec => &mut self.dec,
@@ -912,7 +946,21 @@ impl App {
                                 .desired_rows(1)
                                 .margin(egui::vec2(8.0, 4.0)),
                         );
-                        (resp.changed(), copy_clicked, buf.clone())
+                        if flash_t > 0.0 {
+                            let accent = theme::accent(ui.ctx());
+                            let alpha = (flash_t * 200.0) as u8;
+                            let color = egui::Color32::from_rgba_unmultiplied(
+                                accent.r(), accent.g(), accent.b(), alpha,
+                            );
+                            ui.painter().rect_stroke(
+                                resp.rect,
+                                egui::CornerRadius::same(4),
+                                egui::Stroke::new(1.5, color),
+                                egui::StrokeKind::Outside,
+                            );
+                        }
+                        let had_newline = buf.contains('\n') || buf.contains('\r');
+                        (resp.changed(), had_newline, copy_clicked, buf.clone())
                     })
                     .inner
                 })
@@ -929,6 +977,10 @@ impl App {
                 };
                 buf.retain(|c| c != '\n' && c != '\r');
                 self.on_field_edit(field);
+                if enter_pressed {
+                    self.flash_until = ui.input(|i| i.time) + 0.8;
+                    self.value_just_changed = false; // already flashing, don't double-trigger
+                }
             }
             if copy_clicked {
                 self.copy(ui.ctx(), buf_text, label);
