@@ -218,6 +218,8 @@ pub struct App {
     range_lo: u32,
     /// Sub-pixel accumulator for the width drag-scrubber (3px per bit).
     width_scrub_accum: f32,
+    /// Animation progress for the int/float toggle (0.0 = int, 1.0 = float).
+    mode_toggle_anim: f32,
 
     theme_mode: ThemeMode,
     view_mode: ViewMode,
@@ -308,6 +310,7 @@ impl App {
             range_hi: 7,
             range_lo: 0,
             width_scrub_accum: 0.0,
+            mode_toggle_anim: if number_mode == NumberMode::Float { 1.0 } else { 0.0 },
             theme_mode,
             view_mode,
             custom_size,
@@ -630,22 +633,50 @@ impl App {
     // --- UI sections -----------------------------------------------------
 
     fn expression_centerpiece(&mut self, ui: &mut egui::Ui) {
-        section_label(ui, "EXPRESSION");
-
         let accent = theme::accent(ui.ctx());
         let on_accent = theme::on_accent(ui.ctx());
 
-        // The int/float mode toggle lives next to the expression it governs, so
-        // switching tasks is one click away from where you type.
+        // Animate indicator toward target; keep repainting until settled.
+        let target = if self.is_float_mode() { 1.0_f32 } else { 0.0_f32 };
+        let dt = ui.input(|i| i.unstable_dt);
+        self.mode_toggle_anim += (target - self.mode_toggle_anim) * (14.0 * dt).min(1.0);
+        if (self.mode_toggle_anim - target).abs() > 0.001 {
+            ui.ctx().request_repaint();
+        }
+
+        // Section header row: "EXPRESSION" label left, pill toggle right.
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Mode").weak());
-            if ui.selectable_label(!self.is_float_mode(), "int").clicked() {
-                self.set_number_mode(NumberMode::Integer);
-            }
-            if ui.selectable_label(self.is_float_mode(), "float").clicked() {
-                self.set_number_mode(NumberMode::Float);
-            }
+            ui.label(egui::RichText::new("EXPRESSION").weak().small());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let h = 24.0_f32;
+                let w = 110.0_f32;
+                let r = (h / 2.0) as u8;
+                let rr = r as f32;
+                let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::click());
+                if resp.clicked() {
+                    let next = if self.is_float_mode() { NumberMode::Integer } else { NumberMode::Float };
+                    self.set_number_mode(next);
+                }
+                let painter = ui.painter();
+                let t = self.mode_toggle_anim;
+                let half = w / 2.0;
+                // Track
+                painter.rect_filled(rect, egui::CornerRadius::same(r), ui.visuals().widgets.inactive.bg_fill);
+                // Indicator slides; outer corners round as it reaches each edge.
+                let ind_x = rect.left() + t * half;
+                let ind_rect = egui::Rect::from_min_size(egui::pos2(ind_x, rect.top()), egui::vec2(half, h));
+                let left_r  = (rr * (1.0 - 2.0 * t).max(0.0)).round() as u8;
+                let right_r = (rr * (2.0 * t - 1.0).max(0.0)).round() as u8;
+                let ind_corners = egui::CornerRadius { nw: left_r, sw: left_r, ne: right_r, se: right_r };
+                painter.rect_filled(ind_rect, ind_corners, accent);
+                // Labels
+                let font = egui::FontId::proportional(13.0);
+                let muted = ui.visuals().weak_text_color();
+                painter.text(egui::pos2(rect.left() + half / 2.0, rect.center().y), egui::Align2::CENTER_CENTER, "int",   font.clone(), if t < 0.5 { on_accent } else { muted });
+                painter.text(egui::pos2(rect.left() + half * 1.5, rect.center().y), egui::Align2::CENTER_CENTER, "float", font,         if t > 0.5 { on_accent } else { muted });
+            });
         });
+        ui.add_space(4.0);
         ui.add_space(6.0);
 
         ui.horizontal(|ui| {
