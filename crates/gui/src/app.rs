@@ -649,7 +649,6 @@ impl App {
                     .vertical_align(egui::Align::Center)
                     .margin(egui::vec2(10.0, 8.0)),
             );
-            paint_input_frame(ui, resp.rect, accent);
             // Editing the expression clears any stale "invalid" message — we
             // only validate at evaluate time, never while typing.
             if resp.changed() {
@@ -875,7 +874,6 @@ impl App {
     /// Current value: all four bases shown stacked, each independently editable.
     fn current_value_compact(&mut self, ui: &mut egui::Ui) {
         section_label(ui, "CURRENT VALUE");
-        let accent = theme::accent(ui.ctx());
 
         for field in BASE_FIELDS {
             let label = field_label(field);
@@ -903,7 +901,6 @@ impl App {
                                 .desired_rows(1)
                                 .margin(egui::vec2(8.0, 4.0)),
                         );
-                        paint_input_frame(ui, resp.rect, accent);
                         (resp.changed(), copy_clicked, buf.clone())
                     })
                     .inner
@@ -994,7 +991,6 @@ impl App {
                     .font(egui::TextStyle::Monospace)
                     .desired_width(f32::INFINITY),
             );
-            paint_input_frame(ui, resp.rect, accent);
             if resp.changed() {
                 self.on_fixed_edit();
             }
@@ -1334,23 +1330,6 @@ fn field_label(field: Field) -> &'static str {
 /// field as an editable input.
 /// Decorate an editable field: a subtle full outline so its bounds are easy to
 /// read, plus an accent stripe down the left edge marking it as editable.
-fn paint_input_frame(ui: &mut egui::Ui, rect: egui::Rect, accent: egui::Color32) {
-    let painter = ui.painter();
-    // Outline the whole box so its edges are legible against the card fill.
-    painter.rect_stroke(
-        rect,
-        egui::CornerRadius::same(4),
-        egui::Stroke::new(1.0, accent.gamma_multiply(0.55)),
-        egui::StrokeKind::Inside,
-    );
-    // Accent stripe down the left edge.
-    painter.rect_filled(
-        egui::Rect::from_min_max(rect.left_top(), egui::pos2(rect.left() + 3.0, rect.bottom())),
-        egui::CornerRadius::same(2),
-        accent,
-    );
-}
-
 /// Drawn "copy" icon button: two overlapping rectangles, no font dependency.
 fn copy_icon_button(ui: &mut egui::Ui) -> egui::Response {
     let h = ui.spacing().interact_size.y;
