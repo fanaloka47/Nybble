@@ -261,6 +261,22 @@ impl App {
             .map(|v| v != "false")
             .unwrap_or(true);
 
+        // Register JetBrains Mono as the primary monospace font to match the design.
+        let mut fonts = egui::FontDefinitions::default();
+        fonts.font_data.insert(
+            "JetBrainsMono".to_owned(),
+            egui::FontData::from_static(include_bytes!(
+                "../../../resources/fonts/JetBrainsMono-Regular.ttf"
+            ))
+            .into(),
+        );
+        fonts
+            .families
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .insert(0, "JetBrainsMono".to_owned());
+        cc.egui_ctx.set_fonts(fonts);
+
         let width = Width::new(32).unwrap();
         let mut app = Self {
             value: Value::new(0, width),
