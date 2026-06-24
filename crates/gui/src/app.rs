@@ -553,21 +553,6 @@ impl App {
         }
     }
 
-    fn on_fixed_edit(&mut self) {
-        let text = self.fixed_input.trim();
-        if text.is_empty() {
-            return;
-        }
-        match text.parse::<f64>() {
-            Ok(real) => {
-                self.value = fixed::from_real(real, self.width, self.frac_bits);
-                self.status = None;
-                self.invalidate_expr();
-                self.refresh(Some(Field::Fixed));
-            }
-            Err(_) => self.error("invalid real number"),
-        }
-    }
 
     fn eval_expr(&mut self) -> bool {
         let trimmed = self.expr.trim().to_owned();
@@ -1049,14 +1034,12 @@ impl App {
 
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("real").weak());
-            let resp = ui.add(
+            ui.add(
                 egui::TextEdit::singleline(&mut self.fixed_input)
                     .font(egui::TextStyle::Monospace)
-                    .desired_width(f32::INFINITY),
+                    .desired_width(f32::INFINITY)
+                    .interactive(false),
             );
-            if resp.changed() {
-                self.on_fixed_edit();
-            }
         });
     }
 
