@@ -5,17 +5,17 @@ _Generated: 2026-06-16 · Updated: 2026-06-23 (full rescan) · Scan level: exhau
 ## Annotated tree
 
 ```
-powercalc/
+nybble/
 ├── Cargo.toml                  # Workspace manifest (resolver 2; members: core, gui)
 ├── Cargo.lock                  # Committed (reproducible builds for the binary)
 ├── README.md                   # User-facing intro, features, build & run
 ├── cdc.txt                     # Original product brief from the FPGA engineer
 ├── docs/                       # ← Generated AI-context documentation (this folder)
-│   └── powercalc-plan.md       # Step-by-step build plan / design decisions
+│   └── nybble-plan.md       # Step-by-step build plan / design decisions
 ├── resources/                  # Claude Design GUI-modernization handoff (HTML/JS mockups)
 └── crates/
-    ├── core/                   # Part: core — powercalc-core (library, no UI deps)
-    │   ├── Cargo.toml          # lib crate: powercalc_core
+    ├── core/                   # Part: core — nybble-core (library, no UI deps)
+    │   ├── Cargo.toml          # lib crate: nybble_core
     │   └── src/
     │       ├── lib.rs          # Crate root; module decls + public re-exports
     │       ├── value.rs        # Width, Signedness, Value (canonical model) + formatters
@@ -24,8 +24,8 @@ powercalc/
     │       ├── expr.rs         # Integer tokenizer + Pratt parser + evaluator (eval)
     │       ├── float.rs        # Full-precision f64 evaluator (eval_float, f64_to_value)
     │       └── fixed.rs        # Fixed-point Qm.n <-> real conversion
-    └── gui/                    # Part: gui — powercalc-gui (binary: `powercalc`)
-        ├── Cargo.toml          # bin crate; depends on powercalc-core + eframe/egui
+    └── gui/                    # Part: gui — nybble-gui (binary: `nybble`)
+        ├── Cargo.toml          # bin crate; depends on nybble-core + eframe/egui
         └── src/
             ├── main.rs         # Entry point: NativeOptions + eframe::run_native  [ENTRY]
             ├── app.rs          # App state + all UI sections (eframe::App impl)
@@ -75,8 +75,8 @@ powercalc/
 
 ## How the parts interface
 
-`powercalc-gui` depends on `powercalc-core` via a path dependency
-(`powercalc-core = { path = "../core" }`). The GUI holds a single `Value` (plus a
+`nybble-gui` depends on `nybble-core` via a path dependency
+(`nybble-core = { path = "../core" }`). The GUI holds a single `Value` (plus a
 parallel `f64` for float mode) and UI-only state (text buffers, history, theme,
 view mode) and calls into core for every numeric transformation. See
 [Integration Architecture](./integration-architecture.md).

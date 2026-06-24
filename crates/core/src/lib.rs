@@ -1,4 +1,4 @@
-//! PowerCalc core: pure, UI-free numeric logic.
+//! Nybble core: pure, UI-free numeric logic.
 //!
 //! Everything the calculator can compute lives here and is unit-tested without
 //! any GUI. The central type is [`Value`] — a raw bit pattern (`u128`) that is

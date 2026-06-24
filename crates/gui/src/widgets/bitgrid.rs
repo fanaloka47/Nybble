@@ -2,7 +2,7 @@
 //! clickable 0/1 cells laid out MSB→LSB in non-breaking nibble groups.
 
 use egui::{Color32, CornerRadius, Sense, Vec2};
-use powercalc_core::Value;
+use nybble_core::Value;
 
 const CELL: f32 = 26.0; // bit cell size (square-ish)
 const CELL_H: f32 = 28.0; // bit cell height

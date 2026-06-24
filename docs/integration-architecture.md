@@ -2,25 +2,25 @@
 
 _Generated: 2026-06-16 · Updated: 2026-06-23 (full rescan) · Scan level: exhaustive_
 
-PowerCalc is a two-part Cargo workspace. This document describes how the parts
+nybble is a two-part Cargo workspace. This document describes how the parts
 connect. The integration is **in-process Rust**: there is no network, IPC, or
-serialization boundary — `powercalc-gui` links `powercalc-core` directly.
+serialization boundary — `nybble-gui` links `nybble-core` directly.
 
 ## Integration points
 
 | From | To | Type | Details |
 |------|----|------|---------|
-| `powercalc-gui` | `powercalc-core` | Cargo path dependency | `powercalc-core = { path = "../core" }` in `crates/gui/Cargo.toml`. |
-| `app.rs` | `core` public API | Direct function/method calls | `use powercalc_core::{eval, eval_float, f64_to_value, fixed, Signedness, Value, Width};` |
+| `nybble-gui` | `nybble-core` | Cargo path dependency | `nybble-core = { path = "../core" }` in `crates/gui/Cargo.toml`. |
+| `app.rs` | `core` public API | Direct function/method calls | `use nybble_core::{eval, eval_float, f64_to_value, fixed, Signedness, Value, Width};` |
 
 ## Dependency direction
 
 ```
-powercalc-gui  ──depends on──▶  powercalc-core
+nybble-gui  ──depends on──▶  nybble-core
    (desktop UI)                   (pure numeric library, no deps)
 ```
 
-The dependency is strictly one-way. `powercalc-core` knows nothing about the GUI
+The dependency is strictly one-way. `nybble-core` knows nothing about the GUI
 and has no UI dependencies, which is what lets the entire numeric test suite run
 without a display.
 
@@ -79,8 +79,8 @@ expression literals.
 ## Build & test boundary
 
 - `cargo test` runs the **core** suite (the GUI has no tests).
-- `cargo run -p powercalc-gui` / `cargo build --release` build the linked binary
-  `powercalc`.
+- `cargo run -p nybble-gui` / `cargo build --release` build the linked binary
+  `nybble`.
 
 See the [Development Guide](./development-guide.md) for commands and the
 [GUI architecture](./architecture-gui.md) / [Core architecture](./architecture-core.md)

@@ -4,8 +4,8 @@
   "parts": [
     {
       "part_id": "core",
-      "crate_name": "powercalc-core",
-      "lib_name": "powercalc_core",
+      "crate_name": "nybble-core",
+      "lib_name": "nybble_core",
       "project_type_id": "library",
       "root_path": "crates/core",
       "kind": "lib",
@@ -14,13 +14,13 @@
     },
     {
       "part_id": "gui",
-      "crate_name": "powercalc-gui",
-      "binary_name": "powercalc",
+      "crate_name": "nybble-gui",
+      "binary_name": "nybble",
       "project_type_id": "desktop",
       "root_path": "crates/gui",
       "kind": "bin",
-      "dependencies": ["powercalc-core", "eframe 0.34", "egui 0.34"],
-      "description": "eframe/egui immediate-mode desktop app over powercalc-core. Glow (OpenGL) backend; x11 only (wayland dropped); int/float modes; persistence for theme/history-base/view-mode/number-mode/custom-size."
+      "dependencies": ["nybble-core", "eframe 0.34", "egui 0.34"],
+      "description": "eframe/egui immediate-mode desktop app over nybble-core. Glow (OpenGL) backend; x11 only (wayland dropped); int/float modes; persistence for theme/history-base/view-mode/number-mode/custom-size."
     }
   ],
   "integration_points": [
@@ -28,7 +28,7 @@
       "from": "gui",
       "to": "core",
       "type": "Cargo path dependency (in-process)",
-      "details": "powercalc-core = { path = \"../core\" }; app.rs calls eval, eval_float, f64_to_value, fixed::to_real/from_real, Value methods. One-way dependency."
+      "details": "nybble-core = { path = \"../core\" }; app.rs calls eval, eval_float, f64_to_value, fixed::to_real/from_real, Value methods. One-way dependency."
     }
   ]
 }

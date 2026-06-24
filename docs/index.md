@@ -1,8 +1,8 @@
-# PowerCalc — Documentation Index
+# nybble — Documentation Index
 
 _Generated: 2026-06-16 · Updated: 2026-06-23 (full rescan) · Scan level: exhaustive · Primary AI-context entry point_
 
-PowerCalc is a fast native desktop calculator for working across number bases
+nybble is a fast native desktop calculator for working across number bases
 (hex/dec/bin/oct) with bit-width, signedness, an interactive bit grid, an integer
 and a full-precision float expression evaluator, and fixed-point — built for
 FPGA/hardware work.
@@ -12,12 +12,12 @@ FPGA/hardware work.
 - **Type:** monorepo (Rust Cargo workspace, 2 parts)
 - **Primary language:** Rust (edition 2021)
 - **Architecture:** layered — pure numeric core + thin eframe/egui desktop UI
-- **Binary:** `powercalc` (from `powercalc-gui`)
-- **Tests:** 43 unit tests, all in `powercalc-core`
+- **Binary:** `nybble` (from `nybble-gui`)
+- **Tests:** 43 unit tests, all in `nybble-core`
 
 ## Quick reference by part
 
-### core — `powercalc-core` (library)
+### core — `nybble-core` (library)
 - **Root:** `crates/core`
 - **Tech:** Rust, no dependencies (std only)
 - **Entry/API:** `crates/core/src/lib.rs` re-exports `Value`, `Width`,
@@ -27,7 +27,7 @@ FPGA/hardware work.
   expression evaluator (tokenizer + Pratt parser), a full-precision `f64`
   evaluator (float mode), fixed-point — and the whole test suite
 
-### gui — `powercalc-gui` (desktop)
+### gui — `nybble-gui` (desktop)
 - **Root:** `crates/gui`
 - **Tech:** `eframe`/`egui` 0.34, Glow (OpenGL) backend, x11 (wayland dropped)
 - **Entry point:** `crates/gui/src/main.rs` → `eframe::run_native` → `app::App`
@@ -49,15 +49,15 @@ FPGA/hardware work.
 ## Existing documentation
 
 - [README](../README.md) — user-facing intro, features, build & run
-- [PowerCalc Plan](./powercalc-plan.md) — step-by-step build plan & design decisions
+- [nybble Plan](./nybble-plan.md) — step-by-step build plan & design decisions
 - [Product brief (`cdc.txt`)](../cdc.txt) — original request from the FPGA engineer
 
 ## Getting started
 
 ```sh
-cargo run -p powercalc-gui      # launch the app
+cargo run -p nybble-gui      # launch the app
 cargo test                      # run the core test suite (43 tests)
-cargo build --release           # produce target/release/powercalc
+cargo build --release           # produce target/release/nybble
 ```
 
 Requires a Rust toolchain (https://rustup.rs). The GUI uses the `glow` (OpenGL)

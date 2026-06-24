@@ -44,7 +44,7 @@ _[tool: local_read]_
 
 _[tool: local_read]_
 
-Great — I've read all five source files thoroughly. This is **PowerCalc**: an FPGA-focused integer calculator with expression eval, HEX/DEC/BIN/OCT display, interactive bit grid, fixed-point Q-format, history, and width/sign controls. Let me ask a few focused questions before building.
+Great — I've read all five source files thoroughly. This is **nybble**: an FPGA-focused integer calculator with expression eval, HEX/DEC/BIN/OCT display, interactive bit grid, fixed-point Q-format, history, and width/sign controls. Let me ask a few focused questions before building.
 
 _[tool: questions_v2]_
 
@@ -86,7 +86,7 @@ you always end up in an endless loop that does not produce anything, why ?
 
 You're right — I kept getting interrupted mid-plan and never shipped. I have everything I need now. Building it in one pass.
 
-I'm porting PowerCalc to an interactive HTML calculator: faithful logic (BigInt up to 128-bit, expression eval with `& | ^ ~ << >>`, signed/unsigned, fixed-point Q, history, click-to-toggle bits) plus your requests — responsive single→two-column reflow, auto OS theme + toggle, refined indigo palette, grouped op buttons, a visual bit bar above the toggle grid, and a bit-range selector.
+I'm porting nybble to an interactive HTML calculator: faithful logic (BigInt up to 128-bit, expression eval with `& | ^ ~ << >>`, signed/unsigned, fixed-point Q, history, click-to-toggle bits) plus your requests — responsive single→two-column reflow, auto OS theme + toggle, refined indigo palette, grouped op buttons, a visual bit bar above the toggle grid, and a bit-range selector.
 
 _[tool: update_todos]_
 
@@ -108,7 +108,7 @@ _[tool: set_project_title]_
 
 _[tool: ready_for_verification]_
 
-Done. **PowerCalc.dc.html** is a modernized, fully responsive port of your egui app:
+Done. **nybble.dc.html** is a modernized, fully responsive port of your egui app:
 
 - **Responsive** — full-width expression on top, then a two-column layout that collapses to a single stack below ~720px; type/spacing scale with `clamp()` so it stays usable when the window is small.
 - **Faithful logic** — BigInt math up to 128-bit, full expression eval (`& | ^ ~ << >>`, `+ - * /`, parens, `ans`), signed/unsigned semantics, HEX/DEC/BIN/OCT, fixed-point Q-format, click-to-recall history.

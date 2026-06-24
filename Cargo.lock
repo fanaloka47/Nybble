@@ -1749,6 +1749,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3"
 
 [[package]]
+name = "nybble-core"
+version = "0.1.0"
+
+[[package]]
+name = "nybble-gui"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "nybble-core",
+ "self_update",
+]
+
+[[package]]
 name = "objc-sys"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2196,20 +2210,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0103b1cef7ec0cf76490e969665504990193874ea05c85ff9bab8b911d0a0564"
 dependencies = [
  "zerovec",
-]
-
-[[package]]
-name = "powercalc-core"
-version = "0.1.0"
-
-[[package]]
-name = "powercalc-gui"
-version = "0.1.0"
-dependencies = [
- "eframe",
- "egui",
- "powercalc-core",
- "self_update",
 ]
 
 [[package]]

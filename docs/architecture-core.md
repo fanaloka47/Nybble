@@ -1,11 +1,11 @@
-# Architecture — `powercalc-core`
+# Architecture — `nybble-core`
 
 _Generated: 2026-06-16 · Updated: 2026-06-23 (full rescan) · Part type: library · Scan level: exhaustive_
 
 ## Executive summary
 
-`powercalc-core` is a dependency-free Rust library that holds **all** of
-PowerCalc's numeric logic. It is designed to be fully exercised without a GUI and
+`nybble-core` is a dependency-free Rust library that holds **all** of
+nybble's numeric logic. It is designed to be fully exercised without a GUI and
 carries the entire automated test suite (43 unit tests across the modules). The
 GUI is a thin consumer of this crate. It now offers **two evaluators**: the
 width-bound integer evaluator (`expr`) and a full-precision `f64` evaluator
@@ -16,7 +16,7 @@ width-bound integer evaluator (`expr`) and a full-precision `f64` evaluator
 | Category   | Detail |
 |------------|--------|
 | Language   | Rust, edition 2021 |
-| Crate type | `lib` (`name = "powercalc_core"`, `path = src/lib.rs`) |
+| Crate type | `lib` (`name = "nybble_core"`, `path = src/lib.rs`) |
 | Dependencies | **None** (std only) |
 | Version    | 0.1.0 |
 
@@ -146,7 +146,7 @@ logical vs arithmetic shift, rotate wraparound, operator precedence, mixed-base
 literals, `ans` substitution, error cases, fixed-point round-trips, and (for
 float) precedence, scientific-notation literals, integer widening, unary-minus,
 IEEE division-by-zero, bitwise rejection, and the `f64`→bits pattern. Run with
-`cargo test -p powercalc-core` (or `cargo test`).
+`cargo test -p nybble-core` (or `cargo test`).
 
 ## Public API surface
 

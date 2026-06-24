@@ -7,12 +7,12 @@
   },
   "mode": "full_rescan",
   "scan_level": "exhaustive",
-  "project_root": "/home/arnau/powercalc",
-  "project_knowledge": "/home/arnau/powercalc/docs",
+  "project_root": "/home/arnau/nybble",
+  "project_knowledge": "/home/arnau/nybble/docs",
   "repository_type": "monorepo",
   "project_types": [
-    { "part_id": "core", "project_type_id": "library", "display_name": "powercalc-core (library)" },
-    { "part_id": "gui", "project_type_id": "desktop", "display_name": "powercalc-gui (desktop)" }
+    { "part_id": "core", "project_type_id": "library", "display_name": "nybble-core (library)" },
+    { "part_id": "gui", "project_type_id": "desktop", "display_name": "nybble-gui (desktop)" }
   ],
   "completed_steps": [
     { "step": "rescan_2026-06-23", "status": "completed", "timestamp": "2026-06-23T00:00:00Z", "summary": "Full rescan: re-read all 12 .rs files (now ~3203 LOC). New core float.rs (eval_float, f64_to_value); EvalError::BitwiseInFloatMode added; tests 35->43. GUI gained NumberMode (int/float), ViewMode (compact/full/custom), bit bar + index markers, bit-range extractor, fixed-point fill bar, expanded persistence. Wayland eframe feature dropped (x11 only); screenshot feature added." },
@@ -21,8 +21,8 @@
   "current_step": "completed",
   "findings": {
     "project_classification": "monorepo, 2 parts, Rust",
-    "technology_stack": "Rust 2021; powercalc-core (no deps); powercalc-gui (eframe/egui 0.34, glow, x11)",
-    "tests": "43 unit tests, all in powercalc-core",
+    "technology_stack": "Rust 2021; nybble-core (no deps); nybble-gui (eframe/egui 0.34, glow, x11)",
+    "tests": "43 unit tests, all in nybble-core",
     "loc": "~3203 across 12 .rs files"
   },
   "outputs_generated": [

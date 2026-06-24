@@ -1,4 +1,4 @@
-//! PowerCalc application state and UI.
+//! Nybble application state and UI.
 //!
 //! The expression field is the centerpiece: type an expression, evaluate it, and
 //! it becomes the current value *and* an entry in the history. One canonical
@@ -6,7 +6,7 @@
 //! history all read from it. Signedness only changes the decimal rendering and
 //! the meaning of `>>` and `/`.
 
-use powercalc_core::{eval, eval_float, f64_to_value, fixed, Signedness, Value, Width};
+use nybble_core::{eval, eval_float, f64_to_value, fixed, Signedness, Value, Width};
 
 use crate::theme::{self, ThemeMode};
 use crate::widgets;
@@ -1089,7 +1089,7 @@ impl App {
         let Some(msg) = self.status.clone() else {
             return;
         };
-        egui::Area::new(egui::Id::new("powercalc_toast"))
+        egui::Area::new(egui::Id::new("nybble_toast"))
             .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -22.0))
             .interactable(false)
             .show(ctx, |ui| {
@@ -1164,7 +1164,7 @@ impl eframe::App for App {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 // Header: title + subtitle on the left, theme toggle on the right.
                 ui.horizontal(|ui| {
-                    ui.heading("PowerCalc");
+                    ui.heading("Nybble");
                     // Debug-only window-size readout, so layout bugs can be
                     // reported by their exact triggering size.
                     if cfg!(debug_assertions) {

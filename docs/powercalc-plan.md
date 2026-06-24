@@ -1,4 +1,4 @@
-# PowerCalc — Multi-Base Calculator for FPGA Work
+# nybble — Multi-Base Calculator for FPGA Work
 
 ## Context
 
@@ -22,13 +22,13 @@ Greenfield project — directory holds only BMAD scaffolding, no code yet.
 ### Target structure (built up across the steps below)
 
 ```
-powercalc/
+nybble/
   Cargo.toml                  # workspace
   crates/
-    core/                     # powercalc-core (library, no UI deps)
+    core/                     # nybble-core (library, no UI deps)
       src/{lib,value,ops,parse,expr,fixed}.rs
       tests/
-    gui/                      # powercalc-gui (binary → renamed `powercalc`)
+    gui/                      # nybble-gui (binary → renamed `nybble`)
       src/main.rs
       src/app.rs
       src/widgets/{bitgrid,basefield}.rs
@@ -53,7 +53,7 @@ base formatting.
   (`DEAD_BEEF`, `1101_1110`); decimal honors signedness (two's complement).
 - `core/src/lib.rs`: re-export the public API.
 
-**Verify:** `cargo test -p powercalc-core` — masking, two's-complement decimal round-trips,
+**Verify:** `cargo test -p nybble-core` — masking, two's-complement decimal round-trips,
 grouping, signed vs unsigned decimal for the same bit pattern (e.g. 0xFF = 255 unsigned /
 -1 signed at width 8).
 
@@ -69,7 +69,7 @@ grouping, signed vs unsigned decimal for the same bit pattern (e.g. 0xFF = 255 u
   signed); rotate-left / rotate-right within width; `+ - * / %`. Every result re-masked to
   width (hardware-style truncation/overflow).
 
-**Verify:** `cargo test -p powercalc-core` — arithmetic vs logical shift, rotates wrap within
+**Verify:** `cargo test -p nybble-core` — arithmetic vs logical shift, rotates wrap within
 width, overflow truncates, NOT respects width.
 
 **Done when:** all op tests pass.
@@ -86,7 +86,7 @@ width, overflow truncates, NOT respects width.
   learning artifact). Full operator set from Step 2, parentheses, unary `~`/`-`, and `ans`
   (current value). Evaluation respects current width/signedness.
 
-**Verify:** `cargo test -p powercalc-core` — operator precedence, mixed-base literals,
+**Verify:** `cargo test -p nybble-core` — operator precedence, mixed-base literals,
 parentheses, `0xFF & (1<<3)`, `ans` substitution, malformed input returns a clean error.
 
 **Done when:** evaluator tests pass.
@@ -100,7 +100,7 @@ parentheses, `0xFF & (1<<3)`, `ans` substitution, malformed input returns a clea
 - `core/src/fixed.rs`: interpret raw integer as `Qm.n` (`real = raw / 2^n`) for display, and
   convert an entered real back to the integer; `n` user-selectable.
 
-**Verify:** `cargo test -p powercalc-core` — round-trips for representative Qm.n values, signed
+**Verify:** `cargo test -p nybble-core` — round-trips for representative Qm.n values, signed
 fixed-point.
 
 **Done when:** fixed-point tests pass. **Core is now feature-complete and fully tested.**
@@ -118,7 +118,7 @@ fixed-point.
   the canonical `Value` via `core`; all rows re-render the same frame. Invalid input shows an
   inline error tint without clearing the field.
 
-**Verify:** `cargo run -p powercalc-gui` — type `DEAD_BEEF` in HEX → DEC shows `3735928559`,
+**Verify:** `cargo run -p nybble-gui` — type `DEAD_BEEF` in HEX → DEC shows `3735928559`,
 BIN/OCT update live; bad input tints red and doesn't crash.
 
 **Done when:** live base fields work end-to-end against core.
@@ -132,7 +132,7 @@ BIN/OCT update live; bad input tints red and doesn't crash.
 - `gui/src/widgets/bitgrid.rs`: width-many toggle buttons, MSB→LSB, grouped in rows of 8/16
   with bit-index labels. Clicking a bit toggles it in the canonical `Value`.
 
-**Verify:** `cargo run -p powercalc-gui` — toggling bits updates all base fields instantly;
+**Verify:** `cargo run -p nybble-gui` — toggling bits updates all base fields instantly;
 grid resizes with the width control (Step 8).
 
 **Done when:** bit grid is bidirectional with the live fields.
@@ -148,7 +148,7 @@ grid resizes with the width control (Step 8).
 - Bitwise/arith buttons (`AND OR XOR << >> ~` …) append the matching token to the expression
   line — one coherent compute path rather than a separate register calculator.
 
-**Verify:** `cargo run -p powercalc-gui` — typing `0xFF & (1<<3)` + Enter renders the result in
+**Verify:** `cargo run -p nybble-gui` — typing `0xFF & (1<<3)` + Enter renders the result in
 all bases; op buttons build expressions correctly.
 
 **Done when:** expressions and op buttons drive the shared value.
@@ -162,7 +162,7 @@ all bases; op buttons build expressions correctly.
 - Width presets 8/16/32/64 + custom slider; signed/unsigned toggle; optional Qm.n controls
   wired to `core::fixed`.
 
-**Verify:** `cargo run -p powercalc-gui` — switching 8↔32 and signed↔unsigned reinterprets
+**Verify:** `cargo run -p nybble-gui` — switching 8↔32 and signed↔unsigned reinterprets
 decimal correctly and resizes the bit grid; fixed-point view updates with `n`.
 
 **Done when:** all controls reinterpret the live value correctly.
@@ -174,7 +174,7 @@ decimal correctly and resizes the bit grid; fixed-point view updates with `n`.
 **Goal:** ship it.
 
 - Digit grouping everywhere, consistent error states, sensible keyboard focus/Tab order,
-  rename binary to `powercalc`.
+  rename binary to `nybble`.
 - `cargo build --release` on Linux (and Windows when available) → single self-contained binary.
 - (Optional, later) GitHub Actions matrix to emit Windows `.exe` + Linux binary on tag.
 
@@ -187,7 +187,7 @@ decimal correctly and resizes the bit grid; fixed-point view updates with `n`.
 ## Final end-to-end verification
 
 1. `cargo test` — entire core test suite green.
-2. `cargo run -p powercalc-gui` — HEX `DEAD_BEEF` → DEC `3735928559` + BIN/OCT; bit toggle
+2. `cargo run -p nybble-gui` — HEX `DEAD_BEEF` → DEC `3735928559` + BIN/OCT; bit toggle
    updates all bases; 8↔32 and signed↔unsigned reinterpret decimal; `0xFF & (1<<3)` evaluates
    in all bases.
 3. `cargo build --release` — standalone binary on Linux (Windows when available).

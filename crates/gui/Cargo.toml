@@ -1,11 +1,11 @@
 [package]
-name = "powercalc-gui"
+name = "nybble-gui"
 version = "0.1.0"
 edition = "2021"
-description = "Desktop GUI for PowerCalc, built on eframe/egui."
+description = "Desktop GUI for Nybble, built on eframe/egui."
 
 [[bin]]
-name = "powercalc"
+name = "nybble"
 path = "src/main.rs"
 
 [features]
@@ -14,7 +14,7 @@ path = "src/main.rs"
 screenshot = ["eframe/__screenshot"]
 
 [dependencies]
-powercalc-core = { path = "../core" }
+nybble-core = { path = "../core" }
 # Use the glow (OpenGL) backend rather than the default wgpu/Vulkan one: glow is
 # more reliable under WSLg and lighter on dependencies. accesskit is dropped
 # because it needs a D-Bus session at runtime, which WSL often lacks.

@@ -23,18 +23,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build release binary
-        run: cargo build --release -p powercalc-gui
+        run: cargo build --release -p nybble-gui
 
       - name: Package asset (zip named with the target triple)
         shell: bash
         run: |
           mkdir dist
-          cp target/release/powercalc.exe dist/
+          cp target/release/nybble.exe dist/
           cd dist
-          7z a "powercalc-x86_64-pc-windows-msvc.zip" powercalc.exe
+          7z a "nybble-x86_64-pc-windows-msvc.zip" nybble.exe
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/powercalc-x86_64-pc-windows-msvc.zip
+          files: dist/nybble-x86_64-pc-windows-msvc.zip
           generate_release_notes: true

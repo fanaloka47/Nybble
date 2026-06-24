@@ -1,8 +1,8 @@
-# API Contracts — `powercalc-core`
+# API Contracts — `nybble-core`
 
 _Generated: 2026-06-16 · Updated: 2026-06-23 (full rescan) · Scan level: exhaustive_
 
-This is the public Rust API of the `powercalc-core` library — the contract the GUI
+This is the public Rust API of the `nybble-core` library — the contract the GUI
 (and any future consumer) depends on. There are no network/HTTP endpoints; the
 "API" is the crate's exported types and functions.
 

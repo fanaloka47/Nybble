@@ -1,4 +1,4 @@
-//! Reusable egui widgets for PowerCalc.
+//! Reusable egui widgets for Nybble.
 
 mod bitgrid;
 

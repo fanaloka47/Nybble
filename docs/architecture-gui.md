@@ -1,27 +1,27 @@
-# Architecture — `powercalc-gui`
+# Architecture — `nybble-gui`
 
 _Generated: 2026-06-16 · Updated: 2026-06-23 (full rescan) · Part type: desktop · Scan level: exhaustive_
 
 ## Executive summary
 
-`powercalc-gui` is the desktop application: a thin
+`nybble-gui` is the desktop application: a thin
 [`eframe`](https://crates.io/crates/eframe) / [`egui`](https://github.com/emilk/egui)
-0.34 immediate-mode UI over `powercalc-core`. It owns presentation and UI state;
+0.34 immediate-mode UI over `nybble-core`. It owns presentation and UI state;
 all numeric work is delegated to the core library. The compiled binary is named
-`powercalc`.
+`nybble`.
 
 ## Technology stack
 
 | Category      | Detail |
 |---------------|--------|
 | Language      | Rust, edition 2021 |
-| Crate type    | `bin` (`[[bin]] name = "powercalc"`, `path = src/main.rs`) |
+| Crate type    | `bin` (`[[bin]] name = "nybble"`, `path = src/main.rs`) |
 | GUI framework | `eframe` 0.34 (`default-features = false`), `egui` 0.34 |
 | eframe features | `glow`, `default_fonts`, `persistence`; `x11` added only under `cfg(unix)` |
 | Render backend | Glow (OpenGL) — chosen for WSLg reliability and lighter deps |
 | Notable omissions | `accesskit` disabled (needs D-Bus, often absent under WSL); the `wayland` feature was **dropped** (it crashed on launch under WSL) |
 | Optional feature | `screenshot` — enables eframe's `__screenshot`; with it on, `EFRAME_SCREENSHOT_TO=/path.png` saves a screenshot and exits |
-| Local dependency | `powercalc-core` (path `../core`) |
+| Local dependency | `nybble-core` (path `../core`) |
 
 ## Architecture pattern
 
@@ -33,7 +33,7 @@ widget tree, no MVC, no async.
 ### Entry point (`main.rs`)
 
 `main()` configures `eframe::NativeOptions` — Glow renderer, 760×720 default
-window, 520×480 minimum — and calls `eframe::run_native("PowerCalc", …)`,
+window, 520×480 minimum — and calls `eframe::run_native("nybble", …)`,
 constructing the `App` from the `CreationContext` (which carries persisted
 storage). Two niceties:
 
@@ -101,7 +101,7 @@ Each frame: apply the theme; handle a one-shot startup resize and detect manual
 window resizes (using `content_rect`, which — unlike `inner_rect` — is reliable
 under WSL/glow); then a `CentralPanel` → vertical `ScrollArea` → header → body.
 
-- **Header:** title "PowerCalc" (+ a debug-only window-size readout), a **View**
+- **Header:** title "nybble" (+ a debug-only window-size readout), a **View**
   button cycling Compact → Full → Custom, and a **Theme** button cycling
   Auto → Light → Dark.
 - **Body:** the expression centerpiece spans full width on top. Below it, a
@@ -159,8 +159,8 @@ mode). Empty input parses to zero.
 ## Testing strategy
 
 The GUI crate has **no automated tests** — by design, all testable logic lives in
-`powercalc-core`. GUI verification is manual (`cargo run -p powercalc-gui`); see
-the verification steps in [`powercalc-plan.md`](./powercalc-plan.md) and the
+`nybble-core`. GUI verification is manual (`cargo run -p nybble-gui`); see
+the verification steps in [`nybble-plan.md`](./nybble-plan.md) and the
 [Development Guide](./development-guide.md).
 
 ## Component inventory

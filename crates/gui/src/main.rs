@@ -1,4 +1,4 @@
-//! PowerCalc desktop GUI entry point.
+//! Nybble desktop GUI entry point.
 
 // On Windows release builds, attach to the "windows" subsystem so launching the
 // app doesn't pop up a console window behind it. Inert on other platforms, and
@@ -30,7 +30,7 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
     eframe::run_native(
-        "PowerCalc",
+        "Nybble",
         options,
         Box::new(|cc| Ok(Box::new(App::new(cc)))),
     )

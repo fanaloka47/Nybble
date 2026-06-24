@@ -1,4 +1,4 @@
-# PowerCalc
+# Nybble
 
 A fast desktop calculator for working across number bases — built for FPGA/hardware
 work where you constantly move between hex, decimal, and binary, care about bit width
@@ -19,8 +19,8 @@ and signedness, and want to poke at individual bits.
 
 ```
 crates/
-  core/   powercalc-core — pure, UI-free numeric logic (fully unit-tested)
-  gui/    powercalc-gui  — eframe/egui desktop app (binary: `powercalc`)
+  core/   nybble-core — pure, UI-free numeric logic (fully unit-tested)
+  gui/    nybble-gui  — eframe/egui desktop app (binary: `nybble`)
 ```
 
 All number logic lives in `core` and is tested without the GUI. The GUI is a thin layer
@@ -31,9 +31,9 @@ over it.
 Requires a Rust toolchain (https://rustup.rs). Then:
 
 ```sh
-cargo run -p powercalc-gui      # launch the app
-cargo test                      # run the core test suite
-cargo build --release           # produce target/release/powercalc
+cargo run -p nybble-gui      # launch the app
+cargo test                   # run the core test suite
+cargo build --release        # produce target/release/nybble
 ```
 
 The GUI uses the `glow` (OpenGL) backend for broad compatibility, including WSLg.
@@ -46,7 +46,7 @@ The GUI uses the `glow` (OpenGL) backend for broad compatibility, including WSLg
    git tag v0.1.1
    git push origin main --tags
    ```
-3. CI builds `powercalc.exe`, zips it as `powercalc-x86_64-pc-windows-msvc.zip`, and
+3. CI builds `nybble.exe`, zips it as `nybble-x86_64-pc-windows-msvc.zip`, and
    publishes a GitHub Release with auto-generated notes.
 4. Colleagues' apps detect the new release on next launch and offer a one-click update.
 

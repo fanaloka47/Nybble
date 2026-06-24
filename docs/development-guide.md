@@ -19,8 +19,8 @@ A Cargo workspace (resolver 2) with two members:
 
 | Crate | Path | Kind | Output |
 |-------|------|------|--------|
-| `powercalc-core` | `crates/core` | library (`powercalc_core`) | — |
-| `powercalc-gui`  | `crates/gui`  | binary | `powercalc` |
+| `nybble-core` | `crates/core` | library (`nybble_core`) | — |
+| `nybble-gui`  | `crates/gui`  | binary | `nybble` |
 
 See [Source Tree Analysis](./source-tree-analysis.md) for the annotated tree.
 
@@ -28,13 +28,13 @@ See [Source Tree Analysis](./source-tree-analysis.md) for the annotated tree.
 
 ```sh
 # Run the desktop app
-cargo run -p powercalc-gui
+cargo run -p nybble-gui
 
 # Run the core test suite (43 unit tests; the GUI has none)
 cargo test                       # whole workspace
-cargo test -p powercalc-core     # core only
+cargo test -p nybble-core     # core only
 
-# Build a release binary → target/release/powercalc
+# Build a release binary → target/release/nybble
 cargo build --release
 
 # Lint / format (standard Cargo tooling)
@@ -62,7 +62,7 @@ cargo clippy
 
 ## Testing approach
 
-- All testable logic lives in `powercalc-core`; each module has a
+- All testable logic lives in `nybble-core`; each module has a
   `#[cfg(test)] mod tests` block. Coverage: `value.rs` (10), `expr.rs` (8),
   `float.rs` (8), `ops.rs` (7), `fixed.rs` (6), `parse.rs` (4) — **43 total**.
 - Tests assert hardware-style semantics directly: width masking/truncation,
@@ -71,9 +71,9 @@ cargo clippy
   substitution, error cases, fixed-point round-trips, and float-mode behaviour
   (scientific notation, integer widening, IEEE inf/nan, bitwise rejection).
 - The GUI is verified **manually**. Canonical smoke test (from
-  [`powercalc-plan.md`](./powercalc-plan.md)):
+  [`nybble-plan.md`](./nybble-plan.md)):
   1. `cargo test` — entire core suite green.
-  2. `cargo run -p powercalc-gui` — type `DEAD_BEEF` in HEX → DEC shows
+  2. `cargo run -p nybble-gui` — type `DEAD_BEEF` in HEX → DEC shows
      `3735928559`, BIN/OCT update live; toggle bits and watch all bases update;
      switch 8↔32 and signed↔unsigned to reinterpret decimal; evaluate
      `0xFF & (1 << 3)` → result in all bases.

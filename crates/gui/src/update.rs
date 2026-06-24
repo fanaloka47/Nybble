@@ -1,8 +1,8 @@
 use self_update::cargo_crate_version;
 
 const OWNER: &str = "fanaloka47";
-const REPO: &str = "powercalc";
-const BIN: &str = "powercalc";
+const REPO: &str = "nybble";
+const BIN: &str = "nybble";
 
 /// Latest release version string if it is newer than the running build, else `None`.
 pub fn newer_release() -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {

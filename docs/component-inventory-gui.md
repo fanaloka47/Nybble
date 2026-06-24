@@ -1,4 +1,4 @@
-# Component Inventory — `powercalc-gui`
+# Component Inventory — `nybble-gui`
 
 _Generated: 2026-06-16 · Updated: 2026-06-23 (full rescan) · Scan level: exhaustive_
 
@@ -9,8 +9,8 @@ them.
 ## Layout map
 
 ```
-PowerCalc window
-├── Header              heading "PowerCalc" + View button (Compact→Full→Custom)
+nybble window
+├── Header              heading "nybble" + View button (Compact→Full→Custom)
 │                       + Theme button (Auto→Light→Dark)
 ├── EXPRESSION          expression_centerpiece()   [full width]
 └── Body (two columns when wide; single stack when narrow / Compact)
@@ -76,7 +76,7 @@ PowerCalc window
 
 ## Notes
 
-- No automated UI tests; all logic-bearing code is in `powercalc-core`.
+- No automated UI tests; all logic-bearing code is in `nybble-core`.
 - The accent indigo is applied explicitly (Evaluate button, selections, set bits)
   because egui's "strong" text color reuses `widgets.active.fg_stroke`.
 - Float mode hides the bit grid and integer Format controls and reinterprets the
