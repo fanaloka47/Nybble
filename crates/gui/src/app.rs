@@ -863,7 +863,7 @@ impl App {
 
         for field in BASE_FIELDS {
             let label = field_label(field);
-            let changed = {
+            let (edit_changed, copy_clicked, buf_text) = {
                 let buf: &mut String = match field {
                     Field::Hex => &mut self.hex,
                     Field::Dec => &mut self.dec,
@@ -878,19 +878,23 @@ impl App {
                             egui::RichText::new(label).weak().monospace().small(),
                         ),
                     );
-                    let resp = ui.add(
-                        egui::TextEdit::multiline(buf)
-                            .font(egui::FontId::new(16.0, egui::FontFamily::Monospace))
-                            .desired_width(f32::INFINITY)
-                            .desired_rows(1)
-                            .margin(egui::vec2(8.0, 4.0)),
-                    );
-                    paint_input_frame(ui, resp.rect, accent);
-                    resp.changed()
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                        let copy_clicked = copy_icon_button(ui).clicked();
+                        let resp = ui.add(
+                            egui::TextEdit::multiline(buf)
+                                .font(egui::FontId::new(16.0, egui::FontFamily::Monospace))
+                                .desired_width(f32::INFINITY)
+                                .desired_rows(1)
+                                .margin(egui::vec2(8.0, 4.0)),
+                        );
+                        paint_input_frame(ui, resp.rect, accent);
+                        (resp.changed(), copy_clicked, buf.clone())
+                    })
+                    .inner
                 })
                 .inner
             };
-            if changed {
+            if edit_changed {
                 // Strip newlines the multiline widget may insert when Enter is pressed.
                 let buf: &mut String = match field {
                     Field::Hex => &mut self.hex,
@@ -901,6 +905,9 @@ impl App {
                 };
                 buf.retain(|c| c != '\n' && c != '\r');
                 self.on_field_edit(field);
+            }
+            if copy_clicked {
+                self.copy(ui.ctx(), buf_text, label);
             }
             ui.add_space(4.0);
         }
@@ -1326,6 +1333,42 @@ fn paint_input_frame(ui: &mut egui::Ui, rect: egui::Rect, accent: egui::Color32)
         egui::CornerRadius::same(2),
         accent,
     );
+}
+
+/// Drawn "copy" icon button: two overlapping rectangles, no font dependency.
+fn copy_icon_button(ui: &mut egui::Ui) -> egui::Response {
+    let h = ui.spacing().interact_size.y;
+    let w = h * 0.85;
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::click());
+
+    if ui.is_rect_visible(rect) {
+        let vis = ui.style().interact(&resp);
+        let stroke = egui::Stroke::new(1.2, vis.fg_stroke.color);
+        let corner = egui::CornerRadius::same(2);
+        let bg = theme::card_fill(ui.ctx());
+
+        let pw = w * 0.50;
+        let ph = h * 0.55;
+        let cx = rect.center().x;
+        let cy = rect.center().y;
+
+        // Back page (offset up-right)
+        let back = egui::Rect::from_center_size(
+            egui::pos2(cx + 2.5, cy - 2.0),
+            egui::vec2(pw, ph),
+        );
+        ui.painter().rect_stroke(back, corner, stroke, egui::StrokeKind::Middle);
+
+        // Front page (offset down-left), filled to occlude the back page.
+        let front = egui::Rect::from_center_size(
+            egui::pos2(cx - 1.5, cy + 2.0),
+            egui::vec2(pw, ph),
+        );
+        ui.painter().rect_filled(front, corner, bg);
+        ui.painter().rect_stroke(front, corner, stroke, egui::StrokeKind::Middle);
+    }
+
+    resp.on_hover_text("Copy")
 }
 
 /// Render a small "weak" section heading.
