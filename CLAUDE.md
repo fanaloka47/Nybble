@@ -86,6 +86,10 @@ Canonical smoke test:
 4. Switch 8↔32 and signed↔unsigned.
 5. Evaluate `0xFF & (1 << 3)`.
 
+## Git workflow
+
+Always make atomic commits — one logical change per commit. Never bundle unrelated changes into a single commit.
+
 ## Constraints
 
 - Values capped at **128 bits**. Wider support needs an arbitrary-precision backend (future extension).
