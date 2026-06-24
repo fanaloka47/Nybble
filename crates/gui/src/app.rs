@@ -871,7 +871,7 @@ impl App {
                     Field::Oct => &mut self.oct,
                     Field::Fixed => unreachable!(),
                 };
-                ui.horizontal(|ui| {
+                ui.horizontal_top(|ui| {
                     ui.add_sized(
                         [36.0, ui.spacing().interact_size.y],
                         egui::Label::new(
@@ -879,9 +879,10 @@ impl App {
                         ),
                     );
                     let resp = ui.add(
-                        egui::TextEdit::singleline(buf)
+                        egui::TextEdit::multiline(buf)
                             .font(egui::FontId::new(16.0, egui::FontFamily::Monospace))
                             .desired_width(f32::INFINITY)
+                            .desired_rows(1)
                             .margin(egui::vec2(8.0, 4.0)),
                     );
                     paint_input_frame(ui, resp.rect, accent);
@@ -890,6 +891,15 @@ impl App {
                 .inner
             };
             if changed {
+                // Strip newlines the multiline widget may insert when Enter is pressed.
+                let buf: &mut String = match field {
+                    Field::Hex => &mut self.hex,
+                    Field::Dec => &mut self.dec,
+                    Field::Bin => &mut self.bin,
+                    Field::Oct => &mut self.oct,
+                    Field::Fixed => unreachable!(),
+                };
+                buf.retain(|c| c != '\n' && c != '\r');
                 self.on_field_edit(field);
             }
             ui.add_space(4.0);
