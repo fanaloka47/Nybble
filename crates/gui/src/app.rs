@@ -802,18 +802,15 @@ impl App {
         }
     }
 
-    /// The FORMAT card: width (preset chips + a drag-scrubber), sign, the
-    /// fixed-point split, and the bit-range extractor.
+    /// FORMAT card: width (preset chips + drag-scrubber) and signedness.
     fn format_section(&mut self, ui: &mut egui::Ui) {
         section_label(ui, "FORMAT");
         let accent = theme::accent(ui.ctx());
 
-        // In float mode the value is a full-precision f64, so the integer-only
-        // controls below (width, sign, fixed-point) don't apply.
         if self.is_float_mode() {
             ui.label(
                 egui::RichText::new(
-                    "Full-precision f64. Width, sign, and fixed-point apply to integer mode.",
+                    "Full-precision f64. Width and sign apply to integer mode.",
                 )
                 .weak(),
             );
@@ -872,10 +869,20 @@ impl App {
                 self.set_sign(Signedness::Signed);
             }
         });
+    }
 
-        ui.add_space(8.0);
-        ui.separator();
-        ui.add_space(6.0);
+    /// INTERPRET card: fixed-point view and bit slicer.
+    fn interpret_section(&mut self, ui: &mut egui::Ui) {
+        section_label(ui, "INTERPRET");
+
+        if self.is_float_mode() {
+            ui.label(
+                egui::RichText::new("Fixed-point and bit slicer apply to integer mode.")
+                    .weak(),
+            );
+            return;
+        }
+
         self.fixed_point(ui);
 
         ui.add_space(8.0);
@@ -1328,6 +1335,7 @@ impl eframe::App for App {
                         }
 
                         Self::section(&mut cols[1], |ui| self.format_section(ui));
+                        Self::section(&mut cols[1], |ui| self.interpret_section(ui));
                         Self::section(&mut cols[1], |ui| self.history_panel(ui));
                     });
                 } else {
@@ -1336,6 +1344,7 @@ impl eframe::App for App {
                         Self::section(ui, |ui| self.bits_section(ui));
                     }
                     Self::section(ui, |ui| self.format_section(ui));
+                    Self::section(ui, |ui| self.interpret_section(ui));
                     Self::section(ui, |ui| self.history_panel(ui));
                 }
             });
