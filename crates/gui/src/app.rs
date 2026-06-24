@@ -422,6 +422,12 @@ impl App {
         self.status_until = ctx.input(|i| i.time) + 1.4;
     }
 
+    /// Clear the expression field when the value is mutated outside of eval.
+    fn invalidate_expr(&mut self) {
+        self.expr.clear();
+        self.expr_error = None;
+    }
+
     /// Show a persistent error toast (cleared on the next successful action).
     fn error(&mut self, msg: impl Into<String>) {
         self.status = Some(msg.into());
@@ -434,6 +440,7 @@ impl App {
         if self.frac_bits > self.width.bits() {
             self.frac_bits = self.width.bits();
         }
+        self.invalidate_expr();
         self.refresh(None);
     }
 
@@ -488,6 +495,7 @@ impl App {
             Ok(v) => {
                 self.value = v;
                 self.status = None;
+                self.invalidate_expr();
                 self.refresh(Some(field));
             }
             Err(e) => self.error(e),
@@ -507,6 +515,7 @@ impl App {
                     Ok(x) => {
                         self.float_value = x;
                         self.status = None;
+                        self.invalidate_expr();
                         self.refresh(Some(field));
                     }
                     Err(_) => self.error("invalid real number"),
@@ -524,6 +533,7 @@ impl App {
                     Ok(v) => {
                         self.float_value = f64::from_bits(v.raw() as u64);
                         self.status = None;
+                        self.invalidate_expr();
                         self.refresh(Some(field));
                     }
                     Err(e) => self.error(e),
@@ -542,6 +552,7 @@ impl App {
             Ok(real) => {
                 self.value = fixed::from_real(real, self.width, self.frac_bits);
                 self.status = None;
+                self.invalidate_expr();
                 self.refresh(Some(Field::Fixed));
             }
             Err(_) => self.error("invalid real number"),
@@ -1076,6 +1087,7 @@ impl App {
         if let Some(new_value) = widgets::bit_grid(ui, self.value, accent) {
             self.value = new_value;
             self.status = None;
+            self.invalidate_expr();
             self.refresh(None);
         }
     }
