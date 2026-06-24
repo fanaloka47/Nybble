@@ -1043,7 +1043,7 @@ impl App {
         });
     }
 
-    /// The bit-range extractor: pick `bits[hi:lo]` and read the slice back in
+    /// Bit slicer: pick `bits[hi:lo]` and read the slice back in
     /// hex/dec/bin, click-to-copy.
     fn bit_range(&mut self, ui: &mut egui::Ui) {
         let wbits = self.width.bits();
@@ -1051,7 +1051,7 @@ impl App {
         let top = wbits.saturating_sub(1);
 
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Bit range").weak());
+            ui.label(egui::RichText::new("Bit slicer").weak());
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.monospace(
                     egui::RichText::new(format!("bits[{}:{}]", self.range_hi, self.range_lo))
