@@ -86,10 +86,6 @@ Canonical smoke test:
 4. Switch 8↔32 and signed↔unsigned.
 5. Evaluate `0xFF & (1 << 3)`.
 
-## Git commits
-
-Never include a `Co-Authored-By` trailer or any other reference to Claude or Anthropic in commit messages.
-
 ## Constraints
 
 - Values capped at **128 bits**. Wider support needs an arbitrary-precision backend (future extension).

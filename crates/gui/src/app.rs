@@ -193,9 +193,6 @@ pub struct App {
     fixed_input: String,
     expr: String,
 
-    /// Which base is shown large and editable in the compact current-value view.
-    focus_base: Field,
-
     history: Vec<HistoryEntry>,
     history_base: HistoryBase,
 
@@ -278,7 +275,6 @@ impl App {
             oct: String::new(),
             fixed_input: String::new(),
             expr: String::new(),
-            focus_base: Field::Dec,
             history: Vec::new(),
             history_base,
             expr_error: None,
@@ -860,68 +856,43 @@ impl App {
         self.bit_range(ui);
     }
 
-    /// Compact current value: a base selector, the selected base shown large
-    /// and editable, and the other three bases as small click-to-copy lines.
+    /// Current value: all four bases shown stacked, each independently editable.
     fn current_value_compact(&mut self, ui: &mut egui::Ui) {
         section_label(ui, "CURRENT VALUE");
-
         let accent = theme::accent(ui.ctx());
 
-        ui.horizontal(|ui| {
-            for field in BASE_FIELDS {
-                if ui
-                    .selectable_label(self.focus_base == field, field_label(field))
-                    .clicked()
-                {
-                    self.focus_base = field;
-                }
-            }
-        });
-        ui.add_space(4.0);
-
-        // The selected base, large and editable — still drives every other view.
-        let field = self.focus_base;
-        let buf = match field {
-            Field::Hex => &mut self.hex,
-            Field::Dec => &mut self.dec,
-            Field::Bin => &mut self.bin,
-            Field::Oct => &mut self.oct,
-            Field::Fixed => unreachable!(),
-        };
-        let resp = ui.add(
-            egui::TextEdit::singleline(buf)
-                .font(egui::FontId::new(20.0, egui::FontFamily::Monospace))
-                .desired_width(f32::INFINITY)
-                .margin(egui::vec2(8.0, 6.0)),
-        );
-        paint_input_frame(ui, resp.rect, accent);
-        if resp.changed() {
-            self.on_field_edit(field);
-        }
-        ui.add_space(6.0);
-
-        // The other three bases, small and read-only (click to copy).
-        let mut copied: Option<&'static str> = None;
-        for other in BASE_FIELDS {
-            if other == field {
-                continue;
-            }
-            let label = field_label(other);
-            let text = match other {
-                Field::Hex => self.hex.clone(),
-                Field::Dec => self.dec.clone(),
-                Field::Bin => self.bin.clone(),
-                Field::Oct => self.oct.clone(),
-                Field::Fixed => unreachable!(),
+        for field in BASE_FIELDS {
+            let label = field_label(field);
+            let changed = {
+                let buf: &mut String = match field {
+                    Field::Hex => &mut self.hex,
+                    Field::Dec => &mut self.dec,
+                    Field::Bin => &mut self.bin,
+                    Field::Oct => &mut self.oct,
+                    Field::Fixed => unreachable!(),
+                };
+                ui.horizontal(|ui| {
+                    ui.add_sized(
+                        [36.0, ui.spacing().interact_size.y],
+                        egui::Label::new(
+                            egui::RichText::new(label).weak().monospace().small(),
+                        ),
+                    );
+                    let resp = ui.add(
+                        egui::TextEdit::singleline(buf)
+                            .font(egui::FontId::new(16.0, egui::FontFamily::Monospace))
+                            .desired_width(f32::INFINITY)
+                            .margin(egui::vec2(8.0, 4.0)),
+                    );
+                    paint_input_frame(ui, resp.rect, accent);
+                    resp.changed()
+                })
+                .inner
             };
-            if mini_value_line(ui, label, text.clone()) {
-                ui.ctx().copy_text(text);
-                copied = Some(label);
+            if changed {
+                self.on_field_edit(field);
             }
-        }
-        if let Some(label) = copied {
-            self.status = Some(format!("Copied {label}"));
-            self.status_until = ui.ctx().input(|i| i.time) + 1.4;
+            ui.add_space(4.0);
         }
     }
 
@@ -1353,23 +1324,6 @@ fn section_label(ui: &mut egui::Ui, text: &str) {
     ui.add_space(4.0);
 }
 
-/// A small, weak, click-to-copy base line for the compact current-value view.
-/// Returns `true` if the line was clicked (the caller copies and toasts).
-fn mini_value_line(ui: &mut egui::Ui, label: &str, text: String) -> bool {
-    let resp = ui
-        .add(
-            egui::Label::new(
-                egui::RichText::new(format!("{label}  {text}"))
-                    .monospace()
-                    .small()
-                    .weak(),
-            )
-            .truncate()
-            .sense(egui::Sense::click()),
-        )
-        .on_hover_text("Click to copy");
-    resp.clicked()
-}
 
 /// Render the result `value` in one base or all four, as click-to-copy lines.
 /// Returns the label of a line that was clicked (for the toast), if any.
