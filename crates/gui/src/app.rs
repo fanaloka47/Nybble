@@ -1250,6 +1250,12 @@ impl eframe::App for App {
                 // Header: title + subtitle on the left, theme toggle on the right.
                 ui.horizontal(|ui| {
                     ui.heading("Nybble");
+                    ui.label(
+                        egui::RichText::new(concat!("v", env!("CARGO_PKG_VERSION")))
+                            .monospace()
+                            .weak()
+                            .small(),
+                    );
                     // Debug-only window-size readout, so layout bugs can be
                     // reported by their exact triggering size.
                     if cfg!(debug_assertions) {
