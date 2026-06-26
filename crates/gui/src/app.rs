@@ -199,6 +199,10 @@ pub struct App {
     /// Error from the last expression evaluation, shown inline under the field.
     /// Only set at evaluate time; cleared when the expression is edited.
     expr_error: Option<String>,
+    /// Set when a "send to expression" button is clicked; consumed next frame
+    /// by `expression_centerpiece` to focus the box (which is drawn before the
+    /// value rows, so the focus request must be deferred one frame).
+    expr_focus_request: bool,
 
     /// Transient bottom-of-screen toast (copies, parse errors).
     status: Option<String>,
@@ -303,6 +307,7 @@ impl App {
             history: Vec::new(),
             history_base,
             expr_error: None,
+            expr_focus_request: false,
             status: None,
             status_until: 0.0,
             flash_until: 0.0,
@@ -492,6 +497,19 @@ impl App {
     }
 
     /// Parse the buffer for `field`, update the value, and refresh the others.
+    /// The current value of `field`, formatted as an expression-ready literal
+    /// (with the base prefix). Underscore group separators are accepted by the
+    /// expression tokenizer, so the buffers can be fed back verbatim.
+    fn field_literal(&self, field: Field) -> String {
+        match field {
+            Field::Hex => format!("0x{}", self.hex),
+            Field::Bin => format!("0b{}", self.bin),
+            Field::Oct => format!("0o{}", self.oct),
+            Field::Dec => self.dec.clone(),
+            Field::Fixed => unreachable!("fixed field is not a base field"),
+        }
+    }
+
     fn on_field_edit(&mut self, field: Field) {
         if self.is_float_mode() {
             self.on_field_edit_float(field);
@@ -680,17 +698,29 @@ impl App {
         ui.add_space(6.0);
 
         ui.horizontal(|ui| {
-            let resp = ui.add(
-                egui::TextEdit::singleline(&mut self.expr)
-                    .font(egui::FontId::new(22.0, egui::FontFamily::Monospace))
-                    .desired_width(ui.available_width() - 60.0)
-                    .hint_text(
-                        egui::RichText::new("0xFF & (1 << 3)")
-                            .font(egui::FontId::new(16.0, egui::FontFamily::Monospace)),
-                    )
-                    .vertical_align(egui::Align::Center)
-                    .margin(egui::vec2(10.0, 8.0)),
-            );
+            let mut out = egui::TextEdit::singleline(&mut self.expr)
+                .font(egui::FontId::new(22.0, egui::FontFamily::Monospace))
+                .desired_width(ui.available_width() - 60.0)
+                .hint_text(
+                    egui::RichText::new("0xFF & (1 << 3)")
+                        .font(egui::FontId::new(16.0, egui::FontFamily::Monospace)),
+                )
+                .vertical_align(egui::Align::Center)
+                .margin(egui::vec2(10.0, 8.0))
+                .show(ui);
+            // A "send to expression" button replaced the text last frame and
+            // asked us to focus; place the caret at the end so the user can type
+            // an operator immediately.
+            if std::mem::take(&mut self.expr_focus_request) {
+                let id = out.response.response.id;
+                out.response.response.request_focus();
+                let end = egui::text::CCursor::new(self.expr.chars().count());
+                out.state
+                    .cursor
+                    .set_char_range(Some(egui::text::CCursorRange::one(end)));
+                out.state.store(ui.ctx(), id);
+            }
+            let resp = out.response.response;
             // Editing the expression clears any stale "invalid" message — we
             // only validate at evaluate time, never while typing.
             if resp.changed() {
@@ -945,7 +975,7 @@ impl App {
 
         for field in BASE_FIELDS {
             let label = field_label(field);
-            let (edit_changed, enter_pressed, copy_clicked, buf_text) = {
+            let (edit_changed, enter_pressed, copy_clicked, send_clicked, buf_text) = {
                 let buf: &mut String = match field {
                     Field::Hex => &mut self.hex,
                     Field::Dec => &mut self.dec,
@@ -962,6 +992,7 @@ impl App {
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
                         let copy_clicked = copy_icon_button(ui).clicked();
+                        let send_clicked = send_icon_button(ui).clicked();
                         let resp = ui.add(
                             egui::TextEdit::multiline(buf)
                                 .font(egui::FontId::new(16.0, egui::FontFamily::Monospace))
@@ -983,7 +1014,7 @@ impl App {
                             );
                         }
                         let had_newline = buf.contains('\n') || buf.contains('\r');
-                        (resp.changed(), had_newline, copy_clicked, buf.clone())
+                        (resp.changed(), had_newline, copy_clicked, send_clicked, buf.clone())
                     })
                     .inner
                 })
@@ -1007,6 +1038,14 @@ impl App {
             }
             if copy_clicked {
                 self.copy(ui.ctx(), buf_text, label);
+            }
+            if send_clicked {
+                self.expr = self.field_literal(field);
+                self.expr_error = None;
+                self.expr_focus_request = true;
+                // The expression box was already drawn this frame; repaint so the
+                // deferred focus lands on the very next frame.
+                ui.ctx().request_repaint();
             }
             ui.add_space(4.0);
         }
@@ -1453,6 +1492,32 @@ fn copy_icon_button(ui: &mut egui::Ui) -> egui::Response {
     }
 
     resp.on_hover_text("Copy")
+}
+
+/// Secondary icon button that sends the field's value into the expression box.
+/// Drawn as a small rightward arrow, matching `copy_icon_button`'s footprint.
+fn send_icon_button(ui: &mut egui::Ui) -> egui::Response {
+    let h = ui.spacing().interact_size.y;
+    let w = h * 0.85;
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::click());
+
+    if ui.is_rect_visible(rect) {
+        let vis = ui.style().interact(&resp);
+        let stroke = egui::Stroke::new(1.4, vis.fg_stroke.color);
+        let painter = ui.painter();
+        let cy = rect.center().y;
+        let x0 = rect.center().x - w * 0.28;
+        let x1 = rect.center().x + w * 0.28;
+        let head = w * 0.20;
+
+        // Shaft
+        painter.line_segment([egui::pos2(x0, cy), egui::pos2(x1, cy)], stroke);
+        // Arrowhead
+        painter.line_segment([egui::pos2(x1, cy), egui::pos2(x1 - head, cy - head)], stroke);
+        painter.line_segment([egui::pos2(x1, cy), egui::pos2(x1 - head, cy + head)], stroke);
+    }
+
+    resp.on_hover_text("Send to expression")
 }
 
 /// Single icon button showing the current theme; cycles on click.
