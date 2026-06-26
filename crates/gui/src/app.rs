@@ -263,12 +263,11 @@ impl App {
             .and_then(|s| s.get_string("number_mode"))
             .and_then(|s| NumberMode::from_key(&s))
             .unwrap_or_default();
-        let custom_size = storage
-            .and_then(|s| {
-                let w = s.get_string("custom_w")?.parse::<f32>().ok()?;
-                let h = s.get_string("custom_h")?.parse::<f32>().ok()?;
-                Some(egui::vec2(w, h))
-            });
+        let custom_size = storage.and_then(|s| {
+            let w = s.get_string("custom_w")?.parse::<f32>().ok()?;
+            let h = s.get_string("custom_h")?.parse::<f32>().ok()?;
+            Some(egui::vec2(w, h))
+        });
         let auto_check_updates = storage
             .and_then(|s| s.get_string("auto_check_updates"))
             .map(|v| v != "false")
@@ -315,7 +314,11 @@ impl App {
             range_hi: 7,
             range_lo: 0,
             width_scrub_accum: 0.0,
-            mode_toggle_anim: if number_mode == NumberMode::Float { 1.0 } else { 0.0 },
+            mode_toggle_anim: if number_mode == NumberMode::Float {
+                1.0
+            } else {
+                0.0
+            },
             theme_mode,
             view_mode,
             custom_size,
@@ -574,7 +577,6 @@ impl App {
         }
     }
 
-
     fn eval_expr(&mut self) -> bool {
         let trimmed = self.expr.trim().to_owned();
         if trimmed.is_empty() {
@@ -655,7 +657,11 @@ impl App {
         let on_accent = theme::on_accent(ui.ctx());
 
         // Animate indicator toward target; keep repainting until settled.
-        let target = if self.is_float_mode() { 1.0_f32 } else { 0.0_f32 };
+        let target = if self.is_float_mode() {
+            1.0_f32
+        } else {
+            0.0_f32
+        };
         let dt = ui.input(|i| i.unstable_dt);
         self.mode_toggle_anim += (target - self.mode_toggle_anim) * (14.0 * dt).min(1.0);
         if (self.mode_toggle_anim - target).abs() > 0.001 {
@@ -672,37 +678,90 @@ impl App {
                 let rr = r as f32;
                 let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::click());
                 if resp.clicked() {
-                    let next = if self.is_float_mode() { NumberMode::Integer } else { NumberMode::Float };
+                    let next = if self.is_float_mode() {
+                        NumberMode::Integer
+                    } else {
+                        NumberMode::Float
+                    };
                     self.set_number_mode(next);
                 }
                 let painter = ui.painter();
                 let t = self.mode_toggle_anim;
                 let half = w / 2.0;
                 // Track
-                painter.rect_filled(rect, egui::CornerRadius::same(r), ui.visuals().widgets.inactive.bg_fill);
+                painter.rect_filled(
+                    rect,
+                    egui::CornerRadius::same(r),
+                    ui.visuals().widgets.inactive.bg_fill,
+                );
                 // Indicator slides; outer corners round as it reaches each edge.
                 let ind_x = rect.left() + t * half;
-                let ind_rect = egui::Rect::from_min_size(egui::pos2(ind_x, rect.top()), egui::vec2(half, h));
-                let left_r  = (rr * (1.0 - 2.0 * t).max(0.0)).round() as u8;
+                let ind_rect =
+                    egui::Rect::from_min_size(egui::pos2(ind_x, rect.top()), egui::vec2(half, h));
+                let left_r = (rr * (1.0 - 2.0 * t).max(0.0)).round() as u8;
                 let right_r = (rr * (2.0 * t - 1.0).max(0.0)).round() as u8;
-                let ind_corners = egui::CornerRadius { nw: left_r, sw: left_r, ne: right_r, se: right_r };
+                let ind_corners = egui::CornerRadius {
+                    nw: left_r,
+                    sw: left_r,
+                    ne: right_r,
+                    se: right_r,
+                };
                 painter.rect_filled(ind_rect, ind_corners, accent);
                 // Labels
                 let font = egui::FontId::proportional(13.0);
                 let muted = ui.visuals().weak_text_color();
-                painter.text(egui::pos2(rect.left() + half / 2.0, rect.center().y), egui::Align2::CENTER_CENTER, "int",   font.clone(), if t < 0.5 { on_accent } else { muted });
-                painter.text(egui::pos2(rect.left() + half * 1.5, rect.center().y), egui::Align2::CENTER_CENTER, "float", font,         if t > 0.5 { on_accent } else { muted });
+                painter.text(
+                    egui::pos2(rect.left() + half / 2.0, rect.center().y),
+                    egui::Align2::CENTER_CENTER,
+                    "int",
+                    font.clone(),
+                    if t < 0.5 { on_accent } else { muted },
+                );
+                painter.text(
+                    egui::pos2(rect.left() + half * 1.5, rect.center().y),
+                    egui::Align2::CENTER_CENTER,
+                    "float",
+                    font,
+                    if t > 0.5 { on_accent } else { muted },
+                );
             });
         });
         ui.add_space(4.0);
         ui.add_space(6.0);
+
+        // Hint and tooltip advertise the named functions, tailored to the mode:
+        // float mode has the full scientific set, integer mode a width-masked
+        // subset. The numeric logic itself lives entirely in `nybble-core`.
+        let (hint, fn_help) = if self.is_float_mode() {
+            (
+                "sqrt(2) · sin(pi/2) · 2**8",
+                "Float-mode functions:\n\
+                 trig (rad): sin cos tan asin acos atan · atan2(y,x)\n\
+                 trig (deg): sind cosd tand asind acosd atand\n\
+                 hyperbolic: sinh cosh tanh asinh acosh atanh\n\
+                 logs/exp: ln log2 log10 log(x,base) exp exp2\n\
+                 powers: sqrt cbrt pow(x,y) root(x,n) · x**y\n\
+                 rounding: floor ceil round trunc abs sign\n\
+                 other: hypot min max gcd lcm mod fact\n\
+                 constants: pi e tau",
+            )
+        } else {
+            (
+                "0xFF & (1 << 3) · log2(4)",
+                "Integer-mode functions (results masked to width):\n\
+                 powers: x**y · pow(x,y) · sqrt · fact\n\
+                 log: log2 clog2 popcount\n\
+                 sign: abs sign\n\
+                 pairs: gcd lcm min max mod",
+            )
+        };
 
         ui.horizontal(|ui| {
             let mut out = egui::TextEdit::singleline(&mut self.expr)
                 .font(egui::FontId::new(22.0, egui::FontFamily::Monospace))
                 .desired_width(ui.available_width() - 60.0)
                 .hint_text(
-                    egui::RichText::new("0xFF & (1 << 3)")
+                    egui::RichText::new(hint)
                         .font(egui::FontId::new(16.0, egui::FontFamily::Monospace)),
                 )
                 .vertical_align(egui::Align::Center)
@@ -720,21 +779,23 @@ impl App {
                     .set_char_range(Some(egui::text::CCursorRange::one(end)));
                 out.state.store(ui.ctx(), id);
             }
-            let resp = out.response.response;
+            let resp = out.response.response.on_hover_text(fn_help);
             // Editing the expression clears any stale "invalid" message — we
             // only validate at evaluate time, never while typing.
             if resp.changed() {
                 self.expr_error = None;
             }
-            let entered =
-                resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            let entered = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             let clicked = ui
                 .add_sized(
                     [44.0, 40.0],
                     egui::Button::new(
                         // `↵` lives only in the bundled monospace (Hack) font, so
                         // render it with the monospace family or it won't be found.
-                        egui::RichText::new("↵").size(24.0).monospace().color(on_accent),
+                        egui::RichText::new("↵")
+                            .size(24.0)
+                            .monospace()
+                            .color(on_accent),
                     )
                     .fill(accent),
                 )
@@ -782,8 +843,10 @@ impl App {
     fn history_list(&mut self, ui: &mut egui::Ui) {
         if self.history.is_empty() {
             ui.label(
-                egui::RichText::new("No expressions evaluated yet — type one above and press Enter.")
-                    .weak(),
+                egui::RichText::new(
+                    "No expressions evaluated yet — type one above and press Enter.",
+                )
+                .weak(),
             );
             return;
         }
@@ -808,10 +871,10 @@ impl App {
             + (value_rows - 1.0) * gap
             + 6.0 // add_space after each entry
             + gap; // spacing between entries
-        // Snug to the entries until we hit five, then cap and scroll. We reserve
-        // the box via allocate_ui so the inner scroll area gets this height — a
-        // bare nested ScrollArea would otherwise be clamped to whatever little
-        // vertical space is left in the column and collapse to ~one entry.
+                   // Snug to the entries until we hit five, then cap and scroll. We reserve
+                   // the box via allocate_ui so the inner scroll area gets this height — a
+                   // bare nested ScrollArea would otherwise be clamped to whatever little
+                   // vertical space is left in the column and collapse to ~one entry.
         let visible = (self.history.len().min(5)) as f32;
         let box_h = entry_h * visible;
 
@@ -870,10 +933,8 @@ impl App {
 
         if self.is_float_mode() {
             ui.label(
-                egui::RichText::new(
-                    "Full-precision f64. Width and sign apply to integer mode.",
-                )
-                .weak(),
+                egui::RichText::new("Full-precision f64. Width and sign apply to integer mode.")
+                    .weak(),
             );
             return;
         }
@@ -938,8 +999,7 @@ impl App {
 
         if self.is_float_mode() {
             ui.label(
-                egui::RichText::new("Fixed-point and bit slicer apply to integer mode.")
-                    .weak(),
+                egui::RichText::new("Fixed-point and bit slicer apply to integer mode.").weak(),
             );
             return;
         }
@@ -966,8 +1026,12 @@ impl App {
             if flash_t > 0.0 {
                 let accent = theme::accent(ui.ctx());
                 let alpha = (flash_t * 255.0) as u8;
-                let color =
-                    egui::Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), alpha);
+                let color = egui::Color32::from_rgba_unmultiplied(
+                    accent.r(),
+                    accent.g(),
+                    accent.b(),
+                    alpha,
+                );
                 ui.label(egui::RichText::new("✓").small().monospace().color(color));
                 ui.ctx().request_repaint();
             }
@@ -986,9 +1050,7 @@ impl App {
                 ui.horizontal_top(|ui| {
                     ui.add_sized(
                         [36.0, ui.spacing().interact_size.y],
-                        egui::Label::new(
-                            egui::RichText::new(label).weak().monospace().small(),
-                        ),
+                        egui::Label::new(egui::RichText::new(label).weak().monospace().small()),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
                         let copy_clicked = copy_icon_button(ui).clicked();
@@ -1004,7 +1066,10 @@ impl App {
                             let accent = theme::accent(ui.ctx());
                             let alpha = (flash_t * 200.0) as u8;
                             let color = egui::Color32::from_rgba_unmultiplied(
-                                accent.r(), accent.g(), accent.b(), alpha,
+                                accent.r(),
+                                accent.g(),
+                                accent.b(),
+                                alpha,
                             );
                             ui.painter().rect_stroke(
                                 resp.rect,
@@ -1014,7 +1079,13 @@ impl App {
                             );
                         }
                         let had_newline = buf.contains('\n') || buf.contains('\r');
-                        (resp.changed(), had_newline, copy_clicked, send_clicked, buf.clone())
+                        (
+                            resp.changed(),
+                            had_newline,
+                            copy_clicked,
+                            send_clicked,
+                            buf.clone(),
+                        )
                     })
                     .inner
                 })
@@ -1432,7 +1503,12 @@ impl eframe::App for App {
         storage.set_string("number_mode", self.number_mode.key().to_owned());
         storage.set_string(
             "auto_check_updates",
-            if self.auto_check_updates { "true" } else { "false" }.to_owned(),
+            if self.auto_check_updates {
+                "true"
+            } else {
+                "false"
+            }
+            .to_owned(),
         );
         if let Some(sz) = self.custom_size {
             storage.set_string("custom_w", sz.x.to_string());
@@ -1476,19 +1552,16 @@ fn copy_icon_button(ui: &mut egui::Ui) -> egui::Response {
         let cy = rect.center().y;
 
         // Back page (offset up-right)
-        let back = egui::Rect::from_center_size(
-            egui::pos2(cx + 2.5, cy - 2.0),
-            egui::vec2(pw, ph),
-        );
-        ui.painter().rect_stroke(back, corner, stroke, egui::StrokeKind::Middle);
+        let back = egui::Rect::from_center_size(egui::pos2(cx + 2.5, cy - 2.0), egui::vec2(pw, ph));
+        ui.painter()
+            .rect_stroke(back, corner, stroke, egui::StrokeKind::Middle);
 
         // Front page (offset down-left), filled to occlude the back page.
-        let front = egui::Rect::from_center_size(
-            egui::pos2(cx - 1.5, cy + 2.0),
-            egui::vec2(pw, ph),
-        );
+        let front =
+            egui::Rect::from_center_size(egui::pos2(cx - 1.5, cy + 2.0), egui::vec2(pw, ph));
         ui.painter().rect_filled(front, corner, bg);
-        ui.painter().rect_stroke(front, corner, stroke, egui::StrokeKind::Middle);
+        ui.painter()
+            .rect_stroke(front, corner, stroke, egui::StrokeKind::Middle);
     }
 
     resp.on_hover_text("Copy")
@@ -1513,8 +1586,14 @@ fn send_icon_button(ui: &mut egui::Ui) -> egui::Response {
         // Shaft
         painter.line_segment([egui::pos2(x0, cy), egui::pos2(x1, cy)], stroke);
         // Arrowhead
-        painter.line_segment([egui::pos2(x1, cy), egui::pos2(x1 - head, cy - head)], stroke);
-        painter.line_segment([egui::pos2(x1, cy), egui::pos2(x1 - head, cy + head)], stroke);
+        painter.line_segment(
+            [egui::pos2(x1, cy), egui::pos2(x1 - head, cy - head)],
+            stroke,
+        );
+        painter.line_segment(
+            [egui::pos2(x1, cy), egui::pos2(x1 - head, cy + head)],
+            stroke,
+        );
     }
 
     resp.on_hover_text("Send to expression")
@@ -1530,26 +1609,30 @@ fn theme_icon_toggle(ui: &mut egui::Ui, current: ThemeMode) -> Option<ThemeMode>
     }
 
     let vis = ui.style().interact(&resp);
-    let bg  = vis.weak_bg_fill;
+    let bg = vis.weak_bg_fill;
     let col = vis.fg_stroke.color;
-    let cr  = egui::CornerRadius::same(6);
+    let cr = egui::CornerRadius::same(6);
     ui.painter().rect_filled(rect, cr, bg);
 
     let c = rect.center();
     match current {
-        ThemeMode::Dark  => draw_moon(ui.painter(), c, col, bg),
-        ThemeMode::Auto  => draw_auto_icon(ui.painter(), rect, c, col),
+        ThemeMode::Dark => draw_moon(ui.painter(), c, col, bg),
+        ThemeMode::Auto => draw_auto_icon(ui.painter(), rect, c, col),
         ThemeMode::Light => draw_sun(ui.painter(), c, col),
     }
 
     let tip = match current {
-        ThemeMode::Dark  => "Dark (click for Light)",
-        ThemeMode::Auto  => "System (click for Dark)",
+        ThemeMode::Dark => "Dark (click for Light)",
+        ThemeMode::Auto => "System (click for Dark)",
         ThemeMode::Light => "Light (click for System)",
     };
     let clicked = resp.clicked();
     resp.on_hover_text(tip);
-    if clicked { Some(current.next()) } else { None }
+    if clicked {
+        Some(current.next())
+    } else {
+        None
+    }
 }
 
 /// Crescent moon: filled circle with a same-background-colour "bite" circle.
@@ -1566,7 +1649,7 @@ fn draw_auto_icon(p: &egui::Painter, slot: egui::Rect, c: egui::Pos2, col: egui:
         egui::pos2(c.x + 0.5, slot.bottom()),
     );
     p.with_clip_rect(p.clip_rect().intersect(left_half))
-     .circle_filled(c, r, col);
+        .circle_filled(c, r, col);
     p.circle_stroke(c, r, egui::Stroke::new(1.5, col));
 }
 
@@ -1577,8 +1660,10 @@ fn draw_sun(p: &egui::Painter, c: egui::Pos2, col: egui::Color32) {
         let a = i as f32 * std::f32::consts::TAU / 6.0;
         let (sin, cos) = a.sin_cos();
         p.line_segment(
-            [egui::pos2(c.x + cos * 5.0, c.y + sin * 5.0),
-             egui::pos2(c.x + cos * 6.5, c.y + sin * 6.5)],
+            [
+                egui::pos2(c.x + cos * 5.0, c.y + sin * 5.0),
+                egui::pos2(c.x + cos * 6.5, c.y + sin * 6.5),
+            ],
             egui::Stroke::new(1.5, col),
         );
     }
@@ -1589,7 +1674,6 @@ fn section_label(ui: &mut egui::Ui, text: &str) {
     ui.label(egui::RichText::new(text).weak().small());
     ui.add_space(4.0);
 }
-
 
 /// Render the result `value` in one base or all four, as click-to-copy lines.
 /// Returns the label of a line that was clicked (for the toast), if any.
@@ -1698,8 +1782,8 @@ fn parse_base(text: &str, radix: u32, width: Width, sign: Signedness) -> Result<
     }
 
     let body = strip_radix_prefix(&cleaned, radix);
-    let n = u128::from_str_radix(body, radix)
-        .map_err(|_| format!("invalid base-{radix} number"))?;
+    let n =
+        u128::from_str_radix(body, radix).map_err(|_| format!("invalid base-{radix} number"))?;
     Ok(Value::new(n, width))
 }
 
