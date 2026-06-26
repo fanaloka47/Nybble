@@ -44,6 +44,7 @@ FPGA/hardware work.
 - [Component Inventory — GUI](./component-inventory-gui.md)
 - [Integration Architecture (core ↔ gui)](./integration-architecture.md)
 - [Development Guide](./development-guide.md)
+- [Supported expressions](./expressions.md) — complete operator, function & constant reference
 - [Project Parts metadata](./project-parts.json)
 
 ## Existing documentation

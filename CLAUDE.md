@@ -2,7 +2,7 @@
 
 ## What this is
 
-Nybble is a native desktop calculator for FPGA/hardware engineers. It shows one value in hex, decimal, binary, and octal simultaneously, supports bit-width and signedness, lets users flip individual bits, and evaluates bitwise/arithmetic expressions. Targets Windows and Linux.
+Nybble is a native desktop calculator for FPGA/hardware engineers. It shows one value in hex, decimal, binary, and octal simultaneously, supports bit-width and signedness, lets users flip individual bits, and evaluates bitwise/arithmetic expressions — including the `**` power operator and named functions (`sqrt`, `log2`, `clog2`, `gcd`, … in integer mode; the full scientific set plus `pi`/`e`/`tau` in float mode). Targets Windows and Linux.
 
 ## Workspace layout
 
@@ -19,7 +19,7 @@ Cargo workspace (resolver 2) with two crates:
 
 ```sh
 cargo run -p nybble-gui          # run the app
-cargo test                       # run all 43 unit tests (core only)
+cargo test                       # run all 58 unit tests (core only)
 cargo test -p nybble-core        # core tests only
 cargo build --release            # → target/release/nybble
 cargo fmt && cargo clippy
@@ -69,6 +69,8 @@ In float mode, `float_value: f64` is the currency instead of `Value`.
 |------|------|
 | Add a numeric operation | `crates/core/src/ops.rs` (+ tests) |
 | Add an expression operator | `crates/core/src/expr.rs` (`Token`, `tokenize`, `infix_bp`, `apply_infix`) |
+| Add a named integer function | `crates/core/src/ops.rs` (numeric method) + wire into `Parser::dispatch` in `expr.rs` |
+| Add a float-mode function/constant | `crates/core/src/float.rs` (`call_func` / `constant`) |
 | Add/adjust a base format | `crates/core/src/value.rs` (`to_hex`/`to_bin`/`to_oct`/`to_dec`) |
 | Add a float-mode operator | `crates/core/src/float.rs` |
 | Add a UI section | `crates/gui/src/app.rs` (new fn on `App`, wire into `App::ui`) |
@@ -77,7 +79,7 @@ In float mode, `float_value: f64` is the currency instead of `Value`.
 
 ## Testing
 
-All 43 tests are in `nybble-core`. The GUI has no automated tests — verify manually with `cargo run -p nybble-gui`.
+All 58 tests are in `nybble-core`. The GUI has no automated tests — verify manually with `cargo run -p nybble-gui`.
 
 Canonical smoke test:
 1. `cargo test` — all green.
@@ -85,6 +87,7 @@ Canonical smoke test:
 3. Toggle bits and watch all bases update.
 4. Switch 8↔32 and signed↔unsigned.
 5. Evaluate `0xFF & (1 << 3)`.
+6. Evaluate `clog2(1024)` → `10` and `2**8` → `256` (integer mode); switch to float mode and evaluate `sqrt(2)` and `sin(pi/2)`.
 
 ## Git workflow
 
