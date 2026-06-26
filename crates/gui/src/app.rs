@@ -757,14 +757,14 @@ impl App {
         };
 
         ui.horizontal(|ui| {
-            let mut out = egui::TextEdit::singleline(&mut self.expr)
+            let mut out = egui::TextEdit::multiline(&mut self.expr)
                 .font(egui::FontId::new(22.0, egui::FontFamily::Monospace))
                 .desired_width(ui.available_width() - 60.0)
+                .desired_rows(1)
                 .hint_text(
                     egui::RichText::new(hint)
                         .font(egui::FontId::new(16.0, egui::FontFamily::Monospace)),
                 )
-                .vertical_align(egui::Align::Center)
                 .margin(egui::vec2(10.0, 8.0))
                 .show(ui);
             // A "send to expression" button replaced the text last frame and
@@ -780,12 +780,18 @@ impl App {
                 out.state.store(ui.ctx(), id);
             }
             let resp = out.response.response.on_hover_text(fn_help);
+            // The box is multiline so long expressions wrap instead of scrolling
+            // off-screen, but it still behaves like a single field: Enter submits
+            // rather than inserting a newline, so strip any newline back out.
+            let entered = self.expr.contains('\n') || self.expr.contains('\r');
+            if entered {
+                self.expr.retain(|c| c != '\n' && c != '\r');
+            }
             // Editing the expression clears any stale "invalid" message — we
             // only validate at evaluate time, never while typing.
             if resp.changed() {
                 self.expr_error = None;
             }
-            let entered = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             let clicked = ui
                 .add_sized(
                     [44.0, 40.0],
