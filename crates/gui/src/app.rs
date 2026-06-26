@@ -1108,7 +1108,7 @@ impl App {
                 }
             }
             if copy_clicked {
-                self.copy(ui.ctx(), buf_text, label);
+                self.copy(ui.ctx(), clipboard_form(label, &buf_text), label);
             }
             if send_clicked {
                 self.expr = self.field_literal(field);
@@ -1530,6 +1530,18 @@ fn field_label(field: Field) -> &'static str {
     }
 }
 
+/// Clipboard form of a base rendering: group underscores stripped and a base
+/// prefix prepended — `0x`/`0b`/`0o` for HEX/BIN/OCT, none for DEC.
+fn clipboard_form(label: &str, display: &str) -> String {
+    let bare: String = display.chars().filter(|&c| c != '_').collect();
+    match label {
+        "HEX" => format!("0x{bare}"),
+        "BIN" => format!("0b{bare}"),
+        "OCT" => format!("0o{bare}"),
+        _ => bare, // DEC (and any non-base label) copied bare
+    }
+}
+
 /// Paint a 3 px accent-colored stripe on the left edge of `rect` to mark the
 /// field as an editable input.
 /// Decorate an editable field: a subtle full outline so its bounds are easy to
@@ -1746,7 +1758,7 @@ fn value_line(ui: &mut egui::Ui, label: &str, text: String) -> bool {
             )
             .on_hover_text("Click to copy");
         if resp.clicked() {
-            ui.ctx().copy_text(text.clone());
+            ui.ctx().copy_text(clipboard_form(label, &text));
             clicked = true;
         }
     });
