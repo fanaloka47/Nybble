@@ -1271,12 +1271,8 @@ impl eframe::App for App {
                     ui.with_layout(
                         egui::Layout::right_to_left(egui::Align::Center),
                         |ui| {
-                            if ui
-                                .button(format!("Theme · {}", self.theme_mode.label()))
-                                .on_hover_text("Toggle theme: Auto, Light, Dark")
-                                .clicked()
-                            {
-                                self.theme_mode = self.theme_mode.next();
+                            if let Some(mode) = theme_icon_toggle(ui, self.theme_mode) {
+                                self.theme_mode = mode;
                             }
                             // Cycle: Compact → Full → Custom (if exists) → Compact
                             let view_label = self.view_mode.label();
@@ -1457,6 +1453,70 @@ fn copy_icon_button(ui: &mut egui::Ui) -> egui::Response {
     }
 
     resp.on_hover_text("Copy")
+}
+
+/// Single icon button showing the current theme; cycles on click.
+/// Returns the next ThemeMode if clicked.
+fn theme_icon_toggle(ui: &mut egui::Ui, current: ThemeMode) -> Option<ThemeMode> {
+    let size = ui.spacing().interact_size.y;
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::click());
+    if !ui.is_rect_visible(rect) {
+        return None;
+    }
+
+    let vis = ui.style().interact(&resp);
+    let bg  = vis.weak_bg_fill;
+    let col = vis.fg_stroke.color;
+    let cr  = egui::CornerRadius::same(6);
+    ui.painter().rect_filled(rect, cr, bg);
+
+    let c = rect.center();
+    match current {
+        ThemeMode::Dark  => draw_moon(ui.painter(), c, col, bg),
+        ThemeMode::Auto  => draw_auto_icon(ui.painter(), rect, c, col),
+        ThemeMode::Light => draw_sun(ui.painter(), c, col),
+    }
+
+    let tip = match current {
+        ThemeMode::Dark  => "Dark (click for Light)",
+        ThemeMode::Auto  => "System (click for Dark)",
+        ThemeMode::Light => "Light (click for System)",
+    };
+    let clicked = resp.clicked();
+    resp.on_hover_text(tip);
+    if clicked { Some(current.next()) } else { None }
+}
+
+/// Crescent moon: filled circle with a same-background-colour "bite" circle.
+fn draw_moon(p: &egui::Painter, c: egui::Pos2, col: egui::Color32, bg: egui::Color32) {
+    p.circle_filled(c, 5.5, col);
+    p.circle_filled(egui::pos2(c.x + 2.5, c.y - 2.5), 4.2, bg);
+}
+
+/// Half-filled circle: left half solid, right half just an outline.
+fn draw_auto_icon(p: &egui::Painter, slot: egui::Rect, c: egui::Pos2, col: egui::Color32) {
+    let r = 5.5_f32;
+    let left_half = egui::Rect::from_min_max(
+        egui::pos2(slot.left(), slot.top()),
+        egui::pos2(c.x + 0.5, slot.bottom()),
+    );
+    p.with_clip_rect(p.clip_rect().intersect(left_half))
+     .circle_filled(c, r, col);
+    p.circle_stroke(c, r, egui::Stroke::new(1.5, col));
+}
+
+/// Sun: small filled circle with six short rays.
+fn draw_sun(p: &egui::Painter, c: egui::Pos2, col: egui::Color32) {
+    p.circle_filled(c, 3.5, col);
+    for i in 0..6 {
+        let a = i as f32 * std::f32::consts::TAU / 6.0;
+        let (sin, cos) = a.sin_cos();
+        p.line_segment(
+            [egui::pos2(c.x + cos * 5.0, c.y + sin * 5.0),
+             egui::pos2(c.x + cos * 6.5, c.y + sin * 6.5)],
+            egui::Stroke::new(1.5, col),
+        );
+    }
 }
 
 /// Render a small "weak" section heading.

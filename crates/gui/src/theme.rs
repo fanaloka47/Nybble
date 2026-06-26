@@ -20,21 +20,12 @@ pub enum ThemeMode {
 }
 
 impl ThemeMode {
-    /// Short label for the toggle button.
-    pub fn label(self) -> &'static str {
-        match self {
-            ThemeMode::Auto => "Auto",
-            ThemeMode::Light => "Light",
-            ThemeMode::Dark => "Dark",
-        }
-    }
-
     /// Cycle Auto → Light → Dark → Auto.
     pub fn next(self) -> ThemeMode {
         match self {
-            ThemeMode::Auto => ThemeMode::Light,
+            ThemeMode::Auto  => ThemeMode::Light,
             ThemeMode::Light => ThemeMode::Dark,
-            ThemeMode::Dark => ThemeMode::Auto,
+            ThemeMode::Dark  => ThemeMode::Auto,
         }
     }
 
