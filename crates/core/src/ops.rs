@@ -75,7 +75,9 @@ impl Value {
         match sign {
             Signedness::Unsigned => Some(self.with_raw(self.raw() / divisor)),
             Signedness::Signed => {
-                let q = self.as_signed().wrapping_div(self.with_raw(divisor).as_signed());
+                let q = self
+                    .as_signed()
+                    .wrapping_div(self.with_raw(divisor).as_signed());
                 Some(self.with_raw(q as u128))
             }
         }
@@ -90,7 +92,9 @@ impl Value {
         match sign {
             Signedness::Unsigned => Some(self.with_raw(self.raw() % divisor)),
             Signedness::Signed => {
-                let r = self.as_signed().wrapping_rem(self.with_raw(divisor).as_signed());
+                let r = self
+                    .as_signed()
+                    .wrapping_rem(self.with_raw(divisor).as_signed());
                 Some(self.with_raw(r as u128))
             }
         }
@@ -159,6 +163,161 @@ impl Value {
         let raw = self.raw();
         self.with_raw((raw >> a) | (raw << (w - a)))
     }
+
+    // --- Named integer functions ----------------------------------------
+    //
+    // These back the function-call and `**` syntax in `crate::expr`. Like every
+    // other op, results are re-masked to the width (hardware truncation). The
+    // exponent and second operand are taken as plain counts/values.
+
+    /// Integer power. The exponent is taken as a raw count; the result wraps and
+    /// is re-masked to width, so e.g. `2**8` is `0` at width 8 but `256` wider.
+    pub fn pow(self, exp: Value) -> Value {
+        self.with_raw(self.raw().wrapping_pow(exp.raw() as u32))
+    }
+
+    /// Floor of the integer square root of the unsigned magnitude.
+    pub fn isqrt(self) -> Value {
+        let n = self.raw();
+        // The square root of any u128 fits below 2^64.
+        let mut lo = 0u128;
+        let mut hi = n.min((1u128 << 64) - 1);
+        while lo < hi {
+            let mid = lo + (hi - lo + 1) / 2;
+            match mid.checked_mul(mid) {
+                Some(sq) if sq <= n => lo = mid,
+                _ => hi = mid - 1,
+            }
+        }
+        self.with_raw(lo)
+    }
+
+    /// Floor of base-2 logarithm of the unsigned magnitude. `None` for zero,
+    /// where the logarithm is undefined.
+    pub fn ilog2(self) -> Option<Value> {
+        let n = self.raw();
+        if n == 0 {
+            return None;
+        }
+        Some(self.with_raw((127 - n.leading_zeros()) as u128))
+    }
+
+    /// Ceiling of base-2 logarithm — the number of address/index bits needed to
+    /// cover `n` distinct values. `clog2(0) = clog2(1) = 0`, `clog2(1000) = 10`.
+    pub fn clog2(self) -> Value {
+        let n = self.raw();
+        if n <= 1 {
+            return self.with_raw(0);
+        }
+        self.with_raw((128 - (n - 1).leading_zeros()) as u128)
+    }
+
+    /// Number of set bits (population count) within the width.
+    pub fn popcount(self) -> Value {
+        self.with_raw(self.raw().count_ones() as u128)
+    }
+
+    /// Absolute value. Unsigned is identity; signed negates when the sign bit is
+    /// set (the most-negative value wraps to itself, as in two's complement).
+    pub fn abs(self, sign: Signedness) -> Value {
+        match sign {
+            Signedness::Unsigned => self,
+            Signedness::Signed => {
+                if self.raw() & self.width().sign_bit() != 0 {
+                    self.neg()
+                } else {
+                    self
+                }
+            }
+        }
+    }
+
+    /// Sign as `-1`/`0`/`1` (the `-1` rendered as all-ones within the width).
+    pub fn signum(self, sign: Signedness) -> Value {
+        if self.raw() == 0 {
+            return self.with_raw(0);
+        }
+        match sign {
+            Signedness::Unsigned => self.with_raw(1),
+            Signedness::Signed => {
+                if self.raw() & self.width().sign_bit() != 0 {
+                    self.with_raw(self.width().mask())
+                } else {
+                    self.with_raw(1)
+                }
+            }
+        }
+    }
+
+    /// Greatest common divisor of the unsigned magnitudes (`gcd(0, 0) = 0`).
+    pub fn gcd(self, rhs: Value) -> Value {
+        let mut a = self.raw();
+        let mut b = self.rhs_raw(rhs);
+        while b != 0 {
+            let t = a % b;
+            a = b;
+            b = t;
+        }
+        self.with_raw(a)
+    }
+
+    /// Least common multiple of the unsigned magnitudes; wraps and re-masks like
+    /// any product. Zero if either operand is zero.
+    pub fn lcm(self, rhs: Value) -> Value {
+        let a = self.raw();
+        let b = self.rhs_raw(rhs);
+        if a == 0 || b == 0 {
+            return self.with_raw(0);
+        }
+        let g = self.gcd(rhs).raw();
+        self.with_raw((a / g).wrapping_mul(b))
+    }
+
+    /// Smaller of the two operands under the given interpretation.
+    pub fn min(self, rhs: Value, sign: Signedness) -> Value {
+        let r = self.with_raw(self.rhs_raw(rhs));
+        let take_self = match sign {
+            Signedness::Unsigned => self.raw() <= r.raw(),
+            Signedness::Signed => self.as_signed() <= r.as_signed(),
+        };
+        if take_self {
+            self
+        } else {
+            r
+        }
+    }
+
+    /// Larger of the two operands under the given interpretation.
+    pub fn max(self, rhs: Value, sign: Signedness) -> Value {
+        let r = self.with_raw(self.rhs_raw(rhs));
+        let take_self = match sign {
+            Signedness::Unsigned => self.raw() >= r.raw(),
+            Signedness::Signed => self.as_signed() >= r.as_signed(),
+        };
+        if take_self {
+            self
+        } else {
+            r
+        }
+    }
+
+    /// Factorial of the unsigned magnitude, wrapped and re-masked to width. The
+    /// masked product reaches zero once the width's factor of two is exhausted,
+    /// so the loop terminates quickly even for huge inputs.
+    pub fn factorial(self) -> Value {
+        let n = self.raw();
+        let mask = self.width().mask();
+        let mut acc = 1u128 & mask;
+        let mut i = 2u128;
+        while i <= n {
+            acc = acc.wrapping_mul(i) & mask;
+            if acc == 0 {
+                break;
+            }
+            i += 1;
+        }
+        self.with_raw(acc)
+    }
 }
 
 #[cfg(test)]
@@ -200,7 +359,7 @@ mod tests {
         let x = v(0x80, 8);
         assert_eq!(x.shr(1, Signedness::Unsigned).raw(), 0x40);
         assert_eq!(x.shr(1, Signedness::Signed).raw(), 0xC0); // sign-extended
-        // arithmetic shift of a positive value behaves like logical.
+                                                              // arithmetic shift of a positive value behaves like logical.
         assert_eq!(v(0x40, 8).shr(1, Signedness::Signed).raw(), 0x20);
     }
 
@@ -244,6 +403,83 @@ mod tests {
         assert!(x.div(v(0, 8), Signedness::Unsigned).is_none());
         assert!(x.rem(v(0, 8), Signedness::Signed).is_none());
         // signed MIN / -1 wraps instead of panicking.
-        assert_eq!(v(0x80, 8).div(v(0xFF, 8), Signedness::Signed).unwrap().raw(), 0x80);
+        assert_eq!(
+            v(0x80, 8)
+                .div(v(0xFF, 8), Signedness::Signed)
+                .unwrap()
+                .raw(),
+            0x80
+        );
+    }
+
+    #[test]
+    fn power_wraps_to_width() {
+        assert_eq!(v(2, 32).pow(v(8, 32)).raw(), 256);
+        assert_eq!(v(3, 32).pow(v(4, 32)).raw(), 81);
+        // 2**8 = 256 truncates to 0 in 8 bits.
+        assert_eq!(v(2, 8).pow(v(8, 8)).raw(), 0);
+        // anything**0 is 1.
+        assert_eq!(v(7, 8).pow(v(0, 8)).raw(), 1);
+    }
+
+    #[test]
+    fn integer_roots_and_logs() {
+        assert_eq!(v(255, 32).isqrt().raw(), 15);
+        assert_eq!(v(256, 32).isqrt().raw(), 16);
+        assert_eq!(v(0, 32).isqrt().raw(), 0);
+        assert_eq!(v(1, 32).isqrt().raw(), 1);
+        assert_eq!(
+            Value::new(u128::MAX, Width::new(128).unwrap())
+                .isqrt()
+                .raw(),
+            (1u128 << 64) - 1
+        );
+
+        assert_eq!(v(1024, 32).ilog2().unwrap().raw(), 10);
+        assert_eq!(v(1000, 32).ilog2().unwrap().raw(), 9);
+        assert_eq!(v(1, 32).ilog2().unwrap().raw(), 0);
+        assert!(v(0, 32).ilog2().is_none());
+
+        assert_eq!(v(1024, 32).clog2().raw(), 10);
+        assert_eq!(v(1000, 32).clog2().raw(), 10);
+        assert_eq!(v(1025, 32).clog2().raw(), 11);
+        assert_eq!(v(1, 32).clog2().raw(), 0);
+        assert_eq!(v(0, 32).clog2().raw(), 0);
+    }
+
+    #[test]
+    fn popcount_abs_sign() {
+        assert_eq!(v(0xFF, 8).popcount().raw(), 8);
+        assert_eq!(v(0xA5, 8).popcount().raw(), 4);
+        // 0xFF is -1 signed; abs is 1.
+        assert_eq!(v(0xFF, 8).abs(Signedness::Signed).raw(), 1);
+        assert_eq!(v(0xFF, 8).abs(Signedness::Unsigned).raw(), 0xFF);
+        assert_eq!(v(0xFF, 8).signum(Signedness::Signed).raw(), 0xFF); // -1
+        assert_eq!(v(5, 8).signum(Signedness::Signed).raw(), 1);
+        assert_eq!(v(0, 8).signum(Signedness::Unsigned).raw(), 0);
+    }
+
+    #[test]
+    fn gcd_lcm_min_max() {
+        assert_eq!(v(54, 32).gcd(v(24, 32)).raw(), 6);
+        assert_eq!(v(0, 32).gcd(v(0, 32)).raw(), 0);
+        assert_eq!(v(4, 32).lcm(v(6, 32)).raw(), 12);
+        assert_eq!(v(5, 32).lcm(v(0, 32)).raw(), 0);
+        assert_eq!(v(3, 8).min(v(9, 8), Signedness::Unsigned).raw(), 3);
+        assert_eq!(v(3, 8).max(v(9, 8), Signedness::Unsigned).raw(), 9);
+        // -1 (0xFF) is the smaller signed value.
+        assert_eq!(v(0xFF, 8).min(v(1, 8), Signedness::Signed).raw(), 0xFF);
+        assert_eq!(v(0xFF, 8).max(v(1, 8), Signedness::Signed).raw(), 1);
+    }
+
+    #[test]
+    fn factorial_wraps() {
+        assert_eq!(v(5, 32).factorial().raw(), 120);
+        assert_eq!(v(0, 32).factorial().raw(), 1);
+        assert_eq!(v(1, 32).factorial().raw(), 1);
+        // 13! = 6227020800 overflows 32 bits and truncates.
+        assert_eq!(v(13, 32).factorial().raw(), 6227020800u128 & 0xFFFF_FFFF);
+        // A huge input still terminates: the masked product is long since zero.
+        assert_eq!(v(1_000_000, 16).factorial().raw(), 0);
     }
 }
