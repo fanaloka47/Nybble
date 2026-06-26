@@ -8,9 +8,9 @@ const CELL: f32 = 26.0; // bit cell size (square-ish)
 const CELL_H: f32 = 28.0; // bit cell height
 const CELL_GAP: f32 = 2.0; // gap between bits inside a nibble group
 const GROUP_GAP: f32 = 6.0; // gap between nibble groups
-// How far the index number rises into the cell's empty lower padding so it sits
-// just under the digit rather than under the cell's bottom edge. Larger = closer
-// to the digit (eventually overlapping it).
+                            // How far the index number rises into the cell's empty lower padding so it sits
+                            // just under the digit rather than under the cell's bottom edge. Larger = closer
+                            // to the digit (eventually overlapping it).
 const MARKER_RISE: f32 = 8.0;
 const BAR_H: f32 = 13.0; // visual bit bar height
 const BAR_NIBBLE_GAP: f32 = 4.0; // gap between nibbles in the bar
@@ -85,7 +85,11 @@ pub fn bit_grid(ui: &mut egui::Ui, value: Value, accent: Color32) -> Option<Valu
                         let set = (raw >> b) & 1 == 1;
                         let text = egui::RichText::new(if set { "1" } else { "0" })
                             .monospace()
-                            .color(if set { on_accent } else { ui.visuals().text_color() });
+                            .color(if set {
+                                on_accent
+                            } else {
+                                ui.visuals().text_color()
+                            });
                         let mut btn = egui::Button::new(text).min_size(Vec2::new(CELL, CELL_H));
                         if set {
                             btn = btn.fill(accent);
@@ -154,15 +158,16 @@ fn bit_bar(ui: &mut egui::Ui, value: Value, accent: Color32) -> Option<u32> {
     let painter = ui.painter();
     let mut x = rect.left();
     let mut clicked: Option<u32> = None;
-    let click_x = resp.clicked().then(|| resp.interact_pointer_pos()).flatten();
+    let click_x = resp
+        .clicked()
+        .then(|| resp.interact_pointer_pos())
+        .flatten();
 
     let mut drawn = 0;
     for b in (0..w).rev() {
         let set = (raw >> b) & 1 == 1;
-        let seg = egui::Rect::from_min_size(
-            egui::pos2(x, rect.top()),
-            Vec2::new(per_bit, rect.height()),
-        );
+        let seg =
+            egui::Rect::from_min_size(egui::pos2(x, rect.top()), Vec2::new(per_bit, rect.height()));
         painter.rect_filled(seg, CornerRadius::ZERO, if set { accent } else { off });
         if let Some(p) = click_x {
             if p.x >= x && p.x < x + per_bit {

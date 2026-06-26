@@ -108,6 +108,9 @@ mod tests {
 
     #[test]
     fn max_u128_fits() {
-        assert_eq!(parse_literal("0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF").unwrap(), u128::MAX);
+        assert_eq!(
+            parse_literal("0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF").unwrap(),
+            u128::MAX
+        );
     }
 }

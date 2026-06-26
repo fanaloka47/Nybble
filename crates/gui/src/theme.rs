@@ -23,9 +23,9 @@ impl ThemeMode {
     /// Cycle Auto → Light → Dark → Auto.
     pub fn next(self) -> ThemeMode {
         match self {
-            ThemeMode::Auto  => ThemeMode::Light,
+            ThemeMode::Auto => ThemeMode::Light,
             ThemeMode::Light => ThemeMode::Dark,
-            ThemeMode::Dark  => ThemeMode::Auto,
+            ThemeMode::Dark => ThemeMode::Auto,
         }
     }
 
@@ -53,9 +53,7 @@ pub fn apply(ctx: &egui::Context, mode: ThemeMode) {
     let resolved = match mode {
         ThemeMode::Light => Theme::Light,
         ThemeMode::Dark => Theme::Dark,
-        ThemeMode::Auto => ctx
-            .input(|i| i.raw.system_theme)
-            .unwrap_or(Theme::Dark),
+        ThemeMode::Auto => ctx.input(|i| i.raw.system_theme).unwrap_or(Theme::Dark),
     };
     ctx.set_theme(resolved);
     ctx.set_global_style(build_style(resolved));
@@ -130,7 +128,11 @@ fn build_style(theme: Theme) -> Style {
     let mut style = Style::default();
 
     // --- Visuals ---
-    let mut v = if p.dark { Visuals::dark() } else { Visuals::light() };
+    let mut v = if p.dark {
+        Visuals::dark()
+    } else {
+        Visuals::light()
+    };
     v.dark_mode = p.dark;
     v.panel_fill = p.bg;
     v.window_fill = p.surface;
@@ -206,11 +208,23 @@ fn build_style(theme: Theme) -> Style {
 
     // --- Typography ---
     style.text_styles = [
-        (TextStyle::Heading, FontId::new(24.0, FontFamily::Proportional)),
+        (
+            TextStyle::Heading,
+            FontId::new(24.0, FontFamily::Proportional),
+        ),
         (TextStyle::Body, FontId::new(15.0, FontFamily::Proportional)),
-        (TextStyle::Monospace, FontId::new(15.0, FontFamily::Monospace)),
-        (TextStyle::Button, FontId::new(14.0, FontFamily::Proportional)),
-        (TextStyle::Small, FontId::new(12.0, FontFamily::Proportional)),
+        (
+            TextStyle::Monospace,
+            FontId::new(15.0, FontFamily::Monospace),
+        ),
+        (
+            TextStyle::Button,
+            FontId::new(14.0, FontFamily::Proportional),
+        ),
+        (
+            TextStyle::Small,
+            FontId::new(12.0, FontFamily::Proportional),
+        ),
     ]
     .into();
 

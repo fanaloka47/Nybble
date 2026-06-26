@@ -19,26 +19,26 @@ use app::App;
 
 fn icon_rgba(size: u32) -> Vec<u8> {
     let s = size as f32;
-    let bg: [u8; 3] = [15, 17, 21];        // #0F1115
-    let fg: [u8; 3] = [129, 140, 248];     // indigo-400 #818CF8
+    let bg: [u8; 3] = [15, 17, 21]; // #0F1115
+    let fg: [u8; 3] = [129, 140, 248]; // indigo-400 #818CF8
 
     let offset = (88.0 / 512.0 * s).round() as i32;
-    let cell   = (160.0 / 512.0 * s).round() as i32;
-    let gap    = (16.0  / 512.0 * s).round() as i32;
-    let r      =  24.0  / 512.0 * s;
-    let stroke =  10.0  / 512.0 * s;
+    let cell = (160.0 / 512.0 * s).round() as i32;
+    let gap = (16.0 / 512.0 * s).round() as i32;
+    let r = 24.0 / 512.0 * s;
+    let stroke = 10.0 / 512.0 * s;
 
     // (x, y, filled)
     let cells = [
-        (offset,              offset,              true),
-        (offset + cell + gap, offset,              false),
-        (offset,              offset + cell + gap, false),
+        (offset, offset, true),
+        (offset + cell + gap, offset, false),
+        (offset, offset + cell + gap, false),
         (offset + cell + gap, offset + cell + gap, true),
     ];
 
     let mut rgba = vec![0u8; (size * size * 4) as usize];
     for i in 0..(size * size) as usize {
-        rgba[i * 4]     = bg[0];
+        rgba[i * 4] = bg[0];
         rgba[i * 4 + 1] = bg[1];
         rgba[i * 4 + 2] = bg[2];
         rgba[i * 4 + 3] = 255;
@@ -57,11 +57,11 @@ fn icon_rgba(size: u32) -> Vec<u8> {
                 }
                 let idx = ((py * size as i32 + px) * 4) as usize;
                 if filled {
-                    rgba[idx]     = fg[0];
+                    rgba[idx] = fg[0];
                     rgba[idx + 1] = fg[1];
                     rgba[idx + 2] = fg[2];
                 } else if on_rrect_stroke(lx, ly, cell, cell, r, stroke) {
-                    rgba[idx]     = lerp_u8(bg[0], fg[0], 0.35);
+                    rgba[idx] = lerp_u8(bg[0], fg[0], 0.35);
                     rgba[idx + 1] = lerp_u8(bg[1], fg[1], 0.35);
                     rgba[idx + 2] = lerp_u8(bg[2], fg[2], 0.35);
                 }
@@ -119,7 +119,11 @@ fn lerp_u8(a: u8, b: u8, t: f32) -> u8 {
 fn main() -> eframe::Result<()> {
     let icon = {
         let rgba = icon_rgba(256);
-        egui::IconData { rgba, width: 256, height: 256 }
+        egui::IconData {
+            rgba,
+            width: 256,
+            height: 256,
+        }
     };
     // `PC_SIZE=WIDTHxHEIGHT` overrides the initial window size, handy for
     // reproducing a layout bug at the exact size it was reported.
@@ -138,9 +142,5 @@ fn main() -> eframe::Result<()> {
         renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
-    eframe::run_native(
-        "Nybble",
-        options,
-        Box::new(|cc| Ok(Box::new(App::new(cc)))),
-    )
+    eframe::run_native("Nybble", options, Box::new(|cc| Ok(Box::new(App::new(cc)))))
 }

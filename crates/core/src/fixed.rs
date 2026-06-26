@@ -89,7 +89,11 @@ mod tests {
             for &sign in &[Signedness::Unsigned, Signedness::Signed] {
                 let val = v(raw, 8);
                 let real = to_real(val, 4, sign);
-                assert_eq!(from_real(real, w(8), 4).raw(), raw, "raw={raw:#x} sign={sign:?}");
+                assert_eq!(
+                    from_real(real, w(8), 4).raw(),
+                    raw,
+                    "raw={raw:#x} sign={sign:?}"
+                );
             }
         }
     }
