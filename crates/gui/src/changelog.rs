@@ -16,8 +16,14 @@ pub const ENTRIES: &[ReleaseNotes] = &[
     ReleaseNotes {
         version: "1.1.0",
         items: &[
-            "Added a “What's new” dialog that appears after updating.",
-            "Click the version number in the header to reopen it anytime.",
+            "Added a power operator (**) and named functions (sqrt, log2, clog2, gcd, …) to integer expressions.",
+            "Added scientific functions and constants (pi, e, tau) to float mode.",
+            "Added a Settings panel: reorder or hide sections, toggle per-field options, and tune copy behaviour, with a built-in expression reference.",
+            "Added a per-field button to send any value straight into the expression.",
+            "Copying a value now strips underscores and includes the base prefix.",
+            "Long expressions now wrap instead of scrolling off-screen.",
+            "Window sizing is now DPI-aware for multi-monitor setups.",
+            "Added a “What's new” dialog that appears after updating — click the version number in the header to reopen it anytime.",
         ],
     },
     ReleaseNotes {
