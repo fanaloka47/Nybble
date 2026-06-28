@@ -98,6 +98,32 @@ Canonical smoke test:
 
 Always make atomic commits — one logical change per commit. Never bundle unrelated changes into a single commit.
 
+## Releasing
+
+To cut version `X.Y.Z`, produce a single **release commit** (the maintainer creates and pushes the git tag + GitHub release afterwards). The version lives in exactly three committed places — both crate manifests and the lockfile — plus the embedded changelog. Both crates are kept in lockstep; the app displays the `nybble-gui` version (`env!("CARGO_PKG_VERSION")`).
+
+1. **Bump the version** to `X.Y.Z` in:
+   - `crates/core/Cargo.toml` (the `version =` line)
+   - `crates/gui/Cargo.toml` (the `version =` line)
+2. **Add a changelog entry** at the top of `ENTRIES` in `crates/gui/src/changelog.rs`, newest first:
+   ```rust
+   ReleaseNotes {
+       version: "X.Y.Z", // must match the Cargo.toml version exactly
+       items: &[
+           "User-facing summary of each notable change.",
+       ],
+   },
+   ```
+   Write `items` from the user's perspective (what's new/changed/fixed). The `version` string **must equal** the manifest version, or `notes_for(current)` returns `None` and the post-update "What's new" dialog shows nothing.
+3. **Refresh the lockfile and verify**: `cargo build` (rewrites the two `nybble-*` entries in the committed `Cargo.lock`) then `cargo test` — both must be green. Optionally `cargo run -p nybble-gui` and click the header version label to confirm the new notes render.
+4. **Commit atomically** — all four files in one commit, nothing else:
+   ```sh
+   git add crates/core/Cargo.toml crates/gui/Cargo.toml Cargo.lock crates/gui/src/changelog.rs
+   git commit -m "Release vX.Y.Z"
+   ```
+
+Left to the maintainer (do **not** do these automatically): `git tag vX.Y.Z`, push, and publish the matching GitHub release on `fanaloka47/nybble` — that release is what the in-app updater (`self_update`, `crates/gui/src/update.rs`) polls to offer the upgrade.
+
 ## Constraints
 
 - Values capped at **128 bits**. Wider support needs an arbitrary-precision backend (future extension).
