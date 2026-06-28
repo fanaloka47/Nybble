@@ -138,7 +138,10 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size(size)
-            .with_min_inner_size([520.0, 480.0])
+            // Floor matches the Compact preset's width (420) — the narrowest
+            // intended layout — with a height where the content starts to scroll.
+            // Below this the bit grid and settings modal get cramped.
+            .with_min_inner_size([420.0, 460.0])
             .with_icon(icon),
         renderer: eframe::Renderer::Glow,
         ..Default::default()

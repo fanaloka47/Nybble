@@ -1618,7 +1618,8 @@ impl App {
 /// taskbar, but never below the app's minimum size. If the monitor size isn't
 /// known yet (e.g. the very first frame), the size is returned unchanged.
 fn clamp_to_monitor(ctx: &egui::Context, size: egui::Vec2) -> egui::Vec2 {
-    const MIN: egui::Vec2 = egui::vec2(520.0, 480.0);
+    // Keep in step with `with_min_inner_size` in main.rs.
+    const MIN: egui::Vec2 = egui::vec2(420.0, 460.0);
     // Rough allowance for window chrome and the taskbar (logical points).
     const MARGIN: egui::Vec2 = egui::vec2(32.0, 96.0);
     match ctx.input(|i| i.viewport().monitor_size) {
