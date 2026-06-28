@@ -1892,14 +1892,14 @@ impl eframe::App for App {
                                 {
                                     self.spawn_apply_update(ui.ctx().clone());
                                 }
-                            } else if !self.updating && self.update_rx.is_none() {
-                                if ui
+                            } else if !self.updating
+                                && self.update_rx.is_none()
+                                && ui
                                     .button("Check for updates")
                                     .on_hover_text("Check GitHub Releases for a newer version")
                                     .clicked()
-                                {
-                                    self.spawn_update_check(ui.ctx().clone());
-                                }
+                            {
+                                self.spawn_update_check(ui.ctx().clone());
                             }
                         },
                     );
