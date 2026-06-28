@@ -112,7 +112,7 @@ impl Value {
     /// Hexadecimal, zero-padded to the full width and grouped in 4-digit
     /// chunks, e.g. a 32-bit `0xDEADBEEF` renders as `DEAD_BEEF`.
     pub fn to_hex(self) -> String {
-        let digits = ((self.width.bits() + 3) / 4) as usize;
+        let digits = self.width.bits().div_ceil(4) as usize;
         let s = format!("{:0width$X}", self.raw, width = digits);
         group(&s, 4)
     }
@@ -126,7 +126,7 @@ impl Value {
 
     /// Octal, zero-padded to cover the width and grouped in 3-digit chunks.
     pub fn to_oct(self) -> String {
-        let digits = ((self.width.bits() + 2) / 3) as usize;
+        let digits = self.width.bits().div_ceil(3) as usize;
         let s = format!("{:0width$o}", self.raw, width = digits);
         group(&s, 3)
     }
@@ -147,7 +147,7 @@ fn group(s: &str, group_size: usize) -> String {
     let len = s.len();
     let mut out = String::with_capacity(len + len / group_size);
     for (i, c) in s.chars().enumerate() {
-        if i > 0 && (len - i) % group_size == 0 {
+        if i > 0 && (len - i).is_multiple_of(group_size) {
             out.push('_');
         }
         out.push(c);

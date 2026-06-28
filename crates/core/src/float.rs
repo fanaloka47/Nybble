@@ -187,10 +187,7 @@ impl<'a> Parser<'a> {
 
     fn expr(&mut self, min_bp: u8) -> Result<f64, EvalError> {
         let mut lhs = self.prefix()?;
-        loop {
-            let Some(bp) = self.peek().and_then(Self::infix_bp) else {
-                break;
-            };
+        while let Some(bp) = self.peek().and_then(Self::infix_bp) {
             if bp < min_bp {
                 break;
             }

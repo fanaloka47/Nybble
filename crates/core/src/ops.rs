@@ -183,7 +183,7 @@ impl Value {
         let mut lo = 0u128;
         let mut hi = n.min((1u128 << 64) - 1);
         while lo < hi {
-            let mid = lo + (hi - lo + 1) / 2;
+            let mid = lo + (hi - lo).div_ceil(2);
             match mid.checked_mul(mid) {
                 Some(sq) if sq <= n => lo = mid,
                 _ => hi = mid - 1,
