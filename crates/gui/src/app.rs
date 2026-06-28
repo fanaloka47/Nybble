@@ -1444,12 +1444,30 @@ impl App {
         if !self.settings_open {
             return;
         }
+        // egui's Window auto-expands to fit content but never auto-shrinks: the
+        // inner Resize keeps `max(desired, last_content)` across frames (and even
+        // while hidden). Because our content size tracks the window, growing the
+        // OS window once would leave the modal stuck oversized and overflowing a
+        // later-smaller window — and a `max_width` cap alone does not override the
+        // remembered size. Pin the width (min == max) so it is forced to a
+        // deterministic value each frame, and cap the height; both track the live
+        // window. The content scrolls when taller than the cap.
+        let avail = ctx.content_rect();
+        let nav_w = 104.0;
+        let win_w = (avail.width() - 24.0).clamp(300.0, 620.0);
+        let max_h = (avail.height() - 32.0).clamp(240.0, 600.0);
+        let content_w = (win_w - nav_w - 30.0).max(180.0);
+        let scroll_h = (max_h - 60.0).max(140.0);
+
         // Custom title bar: the default one centers the title and is tall, so we
         // disable it and draw our own left-aligned, compact ribbon.
         egui::Window::new("Settings")
             .title_bar(false)
             .collapsible(false)
             .resizable(false)
+            .min_width(win_w)
+            .max_width(win_w)
+            .max_height(max_h)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
@@ -1462,14 +1480,6 @@ impl App {
                 });
                 ui.separator();
 
-                // Size the panes to the window: cap height so a long pane (e.g.
-                // Expressions) scrolls, and bound the content width so the modal
-                // never overflows a narrow/compact window. Title and nav stay put
-                // so the close button is always reachable.
-                let avail = ctx.content_rect();
-                let max_h = (avail.height() - 140.0).max(220.0);
-                let nav_w = 104.0;
-                let content_w = (avail.width() - nav_w - 64.0).clamp(220.0, 456.0);
                 ui.horizontal_top(|ui| {
                     // Left: category navigation. A left-justified layout makes
                     // each item fill the nav width with its label aligned left.
@@ -1486,11 +1496,12 @@ impl App {
                         },
                     );
                     ui.separator();
-                    // Right: the selected category's content.
+                    // Right: the selected category's content. Bounded height so a
+                    // tall pane scrolls instead of growing the window past the cap.
                     ui.vertical(|ui| {
                         ui.set_width(content_w);
                         egui::ScrollArea::vertical()
-                            .max_height(max_h)
+                            .max_height(scroll_h)
                             .auto_shrink([false, true])
                             .show(ui, |ui| match self.settings_tab {
                                 SettingsTab::Panels => self.panels_settings(ui),
@@ -2236,7 +2247,9 @@ fn expression_reference(ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
             ui.label(egui::RichText::new(format!("{label}:")).weak());
-            ui.monospace(fns);
+            // Force wrapping: a bare monospace label in a horizontal layout would
+            // extend to its full width and push the modal wider than the window.
+            ui.add(egui::Label::new(egui::RichText::new(fns).monospace()).wrap());
         });
     };
     group(
@@ -2263,12 +2276,12 @@ fn expression_reference(ui: &mut egui::Ui) {
             ("clog2(1024)", "= 10"),
             ("2 ** 8", "= 256"),
             ("gcd(54, 24)", "= 6"),
-            ("sqrt(2)", "= 1.4142135623730951"),
+            ("sqrt(2)", "= 1.41421..."),
             ("sin(pi / 2)", "= 1"),
             ("log(8, 2)", "= 3"),
             ("hypot(3, 4)", "= 5"),
         ],
-        150.0,
+        126.0,
     );
 }
 
