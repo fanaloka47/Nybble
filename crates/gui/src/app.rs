@@ -1453,7 +1453,10 @@ impl App {
         // deterministic value each frame, and cap the height; both track the live
         // window. The content scrolls when taller than the cap.
         let avail = ctx.content_rect();
-        let nav_w = 104.0;
+        // Text labels when the window is wide enough; icons (with tooltips) when
+        // narrow, so the content pane keeps room in Compact mode.
+        let text_nav = avail.width() >= 560.0;
+        let nav_w = if text_nav { 104.0 } else { 40.0 };
         let win_w = (avail.width() - 24.0).clamp(300.0, 620.0);
         let max_h = (avail.height() - 32.0).clamp(240.0, 600.0);
         let content_w = (win_w - nav_w - 30.0).max(180.0);
@@ -1481,20 +1484,29 @@ impl App {
                 ui.separator();
 
                 ui.horizontal_top(|ui| {
-                    // Left: category navigation. A left-justified layout makes
-                    // each item fill the nav width with its label aligned left.
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(nav_w, 0.0),
-                        egui::Layout::top_down_justified(egui::Align::LEFT),
-                        |ui| {
-                            for tab in SettingsTab::ALL {
-                                let selected = self.settings_tab == tab;
-                                if ui.selectable_label(selected, tab.label()).clicked() {
-                                    self.settings_tab = tab;
-                                }
+                    // Left: category navigation — text labels when wide, drawn
+                    // icons (names in tooltips) when narrow to spare the content.
+                    let nav_layout = if text_nav {
+                        egui::Layout::top_down_justified(egui::Align::LEFT)
+                    } else {
+                        egui::Layout::top_down(egui::Align::Center)
+                    };
+                    ui.allocate_ui_with_layout(egui::vec2(nav_w, 0.0), nav_layout, |ui| {
+                        if !text_nav {
+                            ui.spacing_mut().item_spacing.y = 6.0;
+                        }
+                        for tab in SettingsTab::ALL {
+                            let selected = self.settings_tab == tab;
+                            let clicked = if text_nav {
+                                ui.selectable_label(selected, tab.label()).clicked()
+                            } else {
+                                nav_icon_button(ui, tab, selected).clicked()
+                            };
+                            if clicked {
+                                self.settings_tab = tab;
                             }
-                        },
-                    );
+                        }
+                    });
                     ui.separator();
                     // Right: the selected category's content. Bounded height so a
                     // tall pane scrolls instead of growing the window past the cap.
@@ -1981,6 +1993,83 @@ fn settings_icon_button(ui: &mut egui::Ui) -> egui::Response {
     ui.painter().circle_filled(c, 1.6, col);
 
     resp.on_hover_text("Settings")
+}
+
+/// A settings-category button: a drawn icon (the category name lives in a
+/// tooltip) so the nav column stays narrow. Highlights when selected.
+fn nav_icon_button(ui: &mut egui::Ui, tab: SettingsTab, selected: bool) -> egui::Response {
+    let size = 30.0;
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let accent = theme::accent(ui.ctx());
+        let cr = egui::CornerRadius::same(7);
+        if selected {
+            ui.painter().rect_filled(rect, cr, accent);
+        } else if resp.hovered() {
+            ui.painter()
+                .rect_filled(rect, cr, ui.visuals().widgets.hovered.bg_fill);
+        }
+        let col = if selected {
+            theme::on_accent(ui.ctx())
+        } else {
+            ui.visuals().widgets.inactive.fg_stroke.color
+        };
+        let c = rect.center();
+        match tab {
+            SettingsTab::Panels => draw_panels_glyph(ui.painter(), c, col),
+            SettingsTab::Copy => {
+                let bg = if selected {
+                    accent
+                } else {
+                    theme::card_fill(ui.ctx())
+                };
+                draw_copy_glyph(ui.painter(), c, col, bg);
+            }
+            SettingsTab::Expressions => draw_expr_glyph(ui.painter(), c, col),
+        }
+    }
+    resp.on_hover_text(tab.label())
+}
+
+/// Stacked panels: three short filled bars.
+fn draw_panels_glyph(p: &egui::Painter, c: egui::Pos2, col: egui::Color32) {
+    let w = 14.0;
+    let h = 3.0;
+    let gap = 5.0;
+    for i in -1..=1 {
+        let r =
+            egui::Rect::from_center_size(egui::pos2(c.x, c.y + i as f32 * gap), egui::vec2(w, h));
+        p.rect_filled(r, egui::CornerRadius::same(1), col);
+    }
+}
+
+/// Two overlapping pages (matches `copy_icon_button`'s look).
+fn draw_copy_glyph(p: &egui::Painter, c: egui::Pos2, col: egui::Color32, bg: egui::Color32) {
+    let stroke = egui::Stroke::new(1.3, col);
+    let corner = egui::CornerRadius::same(2);
+    let (pw, ph) = (9.0, 11.0);
+    let back = egui::Rect::from_center_size(egui::pos2(c.x + 2.5, c.y - 2.5), egui::vec2(pw, ph));
+    p.rect_stroke(back, corner, stroke, egui::StrokeKind::Middle);
+    let front = egui::Rect::from_center_size(egui::pos2(c.x - 2.5, c.y + 2.5), egui::vec2(pw, ph));
+    p.rect_filled(front, corner, bg);
+    p.rect_stroke(front, corner, stroke, egui::StrokeKind::Middle);
+}
+
+/// A sine curve, signalling math / expressions.
+fn draw_expr_glyph(p: &egui::Painter, c: egui::Pos2, col: egui::Color32) {
+    let stroke = egui::Stroke::new(1.7, col);
+    let w = 18.0;
+    let amp = 4.5;
+    let n = 24;
+    let pts: Vec<egui::Pos2> = (0..=n)
+        .map(|i| {
+            let t = i as f32 / n as f32;
+            let x = c.x - w / 2.0 + t * w;
+            let y = c.y - (t * std::f32::consts::TAU).sin() * amp;
+            egui::pos2(x, y)
+        })
+        .collect();
+    p.add(egui::Shape::line(pts, stroke));
 }
 
 /// Small close (✕) button drawn as two strokes, no font dependency.
