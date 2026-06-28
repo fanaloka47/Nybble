@@ -48,6 +48,7 @@ Public API re-exported from `lib.rs`: `Value`, `Width`, `Signedness`, `eval`, `E
 
 - **`main.rs`** — eframe entry point, 760×720 default window, 520×480 minimum, Glow (OpenGL) backend.
 - **`app.rs`** — `struct App` holds all state. Immediate-mode: `ui()` runs every frame. Key state: `value: Value`, `width`, `sign`, `frac_bits`, `float_value: f64`, `number_mode: NumberMode`, one text buffer per base.
+- **`settings.rs`** — `Settings` (panel order/visibility, per-field toggles, `CopyOptions`) edited via the gear-icon modal. `Panel` enum drives the data-driven layout in `App::ui`; `CopyOptions::apply` is the single clipboard transform. Self-contained string KV (de)serialization plumbed through `App::new`/`App::save`.
 - **`theme.rs`** — `ThemeMode { Auto, Light, Dark }`, indigo-accented palette. `widgets.active.fg_stroke` doubles as egui's "strong" text color.
 - **`widgets/bitgrid.rs`** — clickable bit grid MSB→LSB, nibble-grouped, returns toggled `Value` on click.
 
@@ -61,7 +62,7 @@ In float mode, `float_value: f64` is the currency instead of `Value`.
 
 ## Persisted preferences
 
-`theme_mode`, `history_base`, `view_mode`, `number_mode`, `custom_w`/`custom_h` — stored via eframe's persistence feature. Value and history are session-only.
+`theme_mode`, `history_base`, `view_mode`, `number_mode`, `custom_w`/`custom_h`, `auto_check_updates`, and the settings keys (`panel_order`, `panel_*`, `field_*`, `show_fixed_point`/`show_bit_slicer`, `copy_*`) — stored via eframe's persistence feature. Value and history are session-only.
 
 ## Where to make changes
 
@@ -73,13 +74,14 @@ In float mode, `float_value: f64` is the currency instead of `Value`.
 | Add a float-mode function/constant | `crates/core/src/float.rs` (`call_func` / `constant`) |
 | Add/adjust a base format | `crates/core/src/value.rs` (`to_hex`/`to_bin`/`to_oct`/`to_dec`) |
 | Add a float-mode operator | `crates/core/src/float.rs` |
-| Add a UI section | `crates/gui/src/app.rs` (new fn on `App`, wire into `App::ui`) |
+| Add a UI section | `crates/gui/src/app.rs` (new fn on `App`, add a `Panel` variant in `settings.rs`, wire into `App::render_panel`) |
+| Add/adjust a setting | `crates/gui/src/settings.rs` (struct field + load/save) and the modal in `App::settings_body` |
 | Add a reusable widget | `crates/gui/src/widgets/` (new module + re-export in `mod.rs`) |
 | Tweak colors/spacing | `crates/gui/src/theme.rs` |
 
 ## Testing
 
-All 58 tests are in `nybble-core`. The GUI has no automated tests — verify manually with `cargo run -p nybble-gui`.
+Most tests are in `nybble-core` (58); `nybble-gui` has a handful in `settings.rs` covering copy transforms and reordering. The rest of the GUI has no automated tests — verify manually with `cargo run -p nybble-gui`.
 
 Canonical smoke test:
 1. `cargo test` — all green.
@@ -88,6 +90,7 @@ Canonical smoke test:
 4. Switch 8↔32 and signed↔unsigned.
 5. Evaluate `0xFF & (1 << 3)`.
 6. Evaluate `clog2(1024)` → `10` and `2**8` → `256` (integer mode); switch to float mode and evaluate `sqrt(2)` and `sin(pi/2)`.
+7. Open the gear-icon Settings: disable OCT (field disappears), reorder a panel, toggle a copy option (preview updates), then restart to confirm it persisted.
 
 ## Git workflow
 
