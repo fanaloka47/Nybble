@@ -7,6 +7,8 @@
 //! arithmetic) and division/remainder (unsigned vs signed) — take a
 //! [`Signedness`].
 
+use std::ops::{Add, Mul, Neg, Not, Shl, Sub};
+
 use crate::value::{Signedness, Value};
 
 impl Value {
@@ -39,30 +41,6 @@ impl Value {
 
     pub fn xnor(self, rhs: Value) -> Value {
         self.with_raw(!(self.raw() ^ self.rhs_raw(rhs)))
-    }
-
-    /// Bitwise NOT, within the width (so the high bits beyond the width stay 0).
-    pub fn not(self) -> Value {
-        self.with_raw(!self.raw())
-    }
-
-    // --- Arithmetic ------------------------------------------------------
-
-    pub fn add(self, rhs: Value) -> Value {
-        self.with_raw(self.raw().wrapping_add(self.rhs_raw(rhs)))
-    }
-
-    pub fn sub(self, rhs: Value) -> Value {
-        self.with_raw(self.raw().wrapping_sub(self.rhs_raw(rhs)))
-    }
-
-    pub fn mul(self, rhs: Value) -> Value {
-        self.with_raw(self.raw().wrapping_mul(self.rhs_raw(rhs)))
-    }
-
-    /// Arithmetic negation (two's complement), within the width.
-    pub fn neg(self) -> Value {
-        self.with_raw(self.raw().wrapping_neg())
     }
 
     /// Division. Returns `None` on divide-by-zero. Unsigned uses raw bits;
@@ -101,16 +79,6 @@ impl Value {
     }
 
     // --- Shifts and rotates ---------------------------------------------
-
-    /// Logical left shift. Bits shifted past the width are dropped.
-    pub fn shl(self, amount: u32) -> Value {
-        let w = self.width().bits();
-        if amount >= w {
-            self.with_raw(0)
-        } else {
-            self.with_raw(self.raw() << amount)
-        }
-    }
 
     /// Right shift. Unsigned/logical fills with zeros; signed/arithmetic
     /// sign-extends (fills with copies of the sign bit).
@@ -320,6 +288,53 @@ impl Value {
     }
 }
 
+impl Not for Value {
+    type Output = Value;
+    fn not(self) -> Value {
+        self.with_raw(!self.raw())
+    }
+}
+
+impl Add for Value {
+    type Output = Value;
+    fn add(self, rhs: Value) -> Value {
+        self.with_raw(self.raw().wrapping_add(self.rhs_raw(rhs)))
+    }
+}
+
+impl Sub for Value {
+    type Output = Value;
+    fn sub(self, rhs: Value) -> Value {
+        self.with_raw(self.raw().wrapping_sub(self.rhs_raw(rhs)))
+    }
+}
+
+impl Mul for Value {
+    type Output = Value;
+    fn mul(self, rhs: Value) -> Value {
+        self.with_raw(self.raw().wrapping_mul(self.rhs_raw(rhs)))
+    }
+}
+
+impl Neg for Value {
+    type Output = Value;
+    fn neg(self) -> Value {
+        self.with_raw(self.raw().wrapping_neg())
+    }
+}
+
+impl Shl<u32> for Value {
+    type Output = Value;
+    fn shl(self, amount: u32) -> Value {
+        let w = self.width().bits();
+        if amount >= w {
+            self.with_raw(0)
+        } else {
+            self.with_raw(self.raw() << amount)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -335,7 +350,7 @@ mod tests {
         assert_eq!(v(0b1100, 4).or(v(0b1010, 4)).raw(), 0b1110);
         assert_eq!(v(0b1100, 4).xor(v(0b1010, 4)).raw(), 0b0110);
         // NOT respects the width: !0xF0 in 8 bits is 0x0F, not 0xFFFF_FF0F.
-        assert_eq!(v(0xF0, 8).not().raw(), 0x0F);
+        assert_eq!((!v(0xF0, 8)).raw(), 0x0F);
         assert_eq!(v(0b1100, 4).nand(v(0b1010, 4)).raw(), 0b0111);
         assert_eq!(v(0b1100, 4).nor(v(0b1010, 4)).raw(), 0b0001);
         assert_eq!(v(0b1100, 4).xnor(v(0b1010, 4)).raw(), 0b1001);
@@ -344,13 +359,13 @@ mod tests {
     #[test]
     fn arithmetic_overflow_truncates() {
         // 0xFF + 1 in 8 bits wraps to 0x00.
-        assert_eq!(v(0xFF, 8).add(v(1, 8)).raw(), 0x00);
+        assert_eq!((v(0xFF, 8) + v(1, 8)).raw(), 0x00);
         // 200 * 2 = 400 = 0x190, truncated to 8 bits = 0x90.
-        assert_eq!(v(200, 8).mul(v(2, 8)).raw(), 0x90);
+        assert_eq!((v(200, 8) * v(2, 8)).raw(), 0x90);
         // 0 - 1 wraps to all ones.
-        assert_eq!(v(0, 8).sub(v(1, 8)).raw(), 0xFF);
+        assert_eq!((v(0, 8) - v(1, 8)).raw(), 0xFF);
         // neg of 1 in 8 bits is 0xFF (-1).
-        assert_eq!(v(1, 8).neg().raw(), 0xFF);
+        assert_eq!((-v(1, 8)).raw(), 0xFF);
     }
 
     #[test]
@@ -365,8 +380,8 @@ mod tests {
 
     #[test]
     fn shift_by_width_or_more() {
-        assert_eq!(v(0xFF, 8).shl(8).raw(), 0x00);
-        assert_eq!(v(0xFF, 8).shl(100).raw(), 0x00);
+        assert_eq!((v(0xFF, 8) << 8).raw(), 0x00);
+        assert_eq!((v(0xFF, 8) << 100).raw(), 0x00);
         assert_eq!(v(0xFF, 8).shr(8, Signedness::Unsigned).raw(), 0x00);
         // signed shift by >= width saturates to all sign bits.
         assert_eq!(v(0x80, 8).shr(8, Signedness::Signed).raw(), 0xFF);
@@ -376,8 +391,8 @@ mod tests {
     #[test]
     fn shl_truncates_into_width() {
         // 0x0F << 4 = 0xF0 in 8 bits; the high nibble that would overflow is gone.
-        assert_eq!(v(0x0F, 8).shl(4).raw(), 0xF0);
-        assert_eq!(v(0xFF, 8).shl(4).raw(), 0xF0);
+        assert_eq!((v(0x0F, 8) << 4).raw(), 0xF0);
+        assert_eq!((v(0xFF, 8) << 4).raw(), 0xF0);
     }
 
     #[test]

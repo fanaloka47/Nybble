@@ -264,8 +264,8 @@ impl<'a> Parser<'a> {
                     Err(EvalError::UnknownIdent(name))
                 }
             }
-            Token::Minus => Ok(self.expr(70)?.neg()),
-            Token::Tilde => Ok(self.expr(70)?.not()),
+            Token::Minus => Ok(-self.expr(70)?),
+            Token::Tilde => Ok(!self.expr(70)?),
             Token::LParen => {
                 let inner = self.expr(0)?;
                 match self.next() {
@@ -279,9 +279,9 @@ impl<'a> Parser<'a> {
 
     fn apply_infix(&self, op: &Token, lhs: Value, rhs: Value) -> Result<Value, EvalError> {
         Ok(match op {
-            Token::Plus => lhs.add(rhs),
-            Token::Minus => lhs.sub(rhs),
-            Token::Star => lhs.mul(rhs),
+            Token::Plus => lhs + rhs,
+            Token::Minus => lhs - rhs,
+            Token::Star => lhs * rhs,
             Token::StarStar => lhs.pow(rhs),
             Token::Slash => lhs.div(rhs, self.sign).ok_or(EvalError::DivByZero)?,
             Token::Percent => lhs.rem(rhs, self.sign).ok_or(EvalError::DivByZero)?,
@@ -289,7 +289,7 @@ impl<'a> Parser<'a> {
             Token::Pipe => lhs.or(rhs),
             Token::Caret => lhs.xor(rhs),
             // Shift amount is the rhs interpreted as a plain count.
-            Token::Shl => lhs.shl(rhs.raw() as u32),
+            Token::Shl => lhs << (rhs.raw() as u32),
             Token::Shr => lhs.shr(rhs.raw() as u32, self.sign),
             _ => return Err(EvalError::UnexpectedToken),
         })
