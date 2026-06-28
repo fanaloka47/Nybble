@@ -261,6 +261,8 @@ pub struct App {
     settings_open: bool,
     /// Selected category in the settings modal.
     settings_tab: SettingsTab,
+    /// Whether the "What's new" dialog is open.
+    changelog_open: bool,
     /// Last window size set by a manual drag; `None` until the first resize.
     custom_size: Option<egui::Vec2>,
     /// Frames remaining before the resize-detection check re-arms after a
@@ -311,6 +313,18 @@ impl App {
             .map(|v| v != "false")
             .unwrap_or(true);
         let settings = storage.map(Settings::load).unwrap_or_default();
+
+        // Show the "What's new" dialog once after an update: the running binary's
+        // version differs from the one last seen, and we have notes for it. A
+        // fresh install (no stored version) is not treated as an upgrade.
+        let last_seen_version = storage.and_then(|s| s.get_string("last_seen_version"));
+        let changelog_open = match &last_seen_version {
+            Some(prev) => {
+                prev != env!("CARGO_PKG_VERSION")
+                    && crate::changelog::notes_for(env!("CARGO_PKG_VERSION")).is_some()
+            }
+            None => false,
+        };
 
         // Register JetBrains Mono as the primary monospace font to match the design.
         let mut fonts = egui::FontDefinitions::default();
@@ -363,6 +377,7 @@ impl App {
             settings,
             settings_open: false,
             settings_tab: SettingsTab::default(),
+            changelog_open,
             custom_size,
             resize_cooldown: 0,
             startup_resize_pending: true,
@@ -1527,6 +1542,78 @@ impl App {
             });
     }
 
+    /// "What's new" dialog: the running version's release notes, shown once
+    /// after an update or on demand via the header version label.
+    fn changelog_window(&mut self, ctx: &egui::Context) {
+        if !self.changelog_open {
+            return;
+        }
+        let version = env!("CARGO_PKG_VERSION");
+        let notes =
+            crate::changelog::notes_for(version).or_else(|| crate::changelog::ENTRIES.first());
+
+        // A Modal (auto-sizing, dimmed backdrop) rather than a Window: its height
+        // tracks the content. Window's inner Resize keeps max(desired, last_content)
+        // and never shrinks, which leaves a tall gap under short notes.
+        let avail = ctx.content_rect();
+        let win_w = (avail.width() * 0.9).clamp(280.0, 460.0);
+        // Cap the notes list so a long changelog scrolls instead of growing the
+        // modal past the window's bottom edge.
+        let list_max_h = (avail.height() * 0.6).max(120.0);
+
+        let modal = egui::Modal::new(egui::Id::new("whats_new")).show(ctx, |ui| {
+            ui.set_width(win_w);
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(format!("What's new in v{version}"))
+                        .size(13.0)
+                        .strong(),
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if close_icon_button(ui).clicked() {
+                        self.changelog_open = false;
+                    }
+                });
+            });
+            ui.separator();
+
+            let accent = theme::accent(ui.ctx());
+            match notes {
+                Some(n) => {
+                    egui::ScrollArea::vertical()
+                        .max_height(list_max_h)
+                        .auto_shrink([false, true])
+                        .show(ui, |ui| {
+                            for item in n.items {
+                                ui.horizontal_top(|ui| {
+                                    ui.label(egui::RichText::new("•").color(accent));
+                                    // Wrap long notes within the remaining width
+                                    // instead of running off the modal's edge.
+                                    ui.add(egui::Label::new(*item).wrap());
+                                });
+                                ui.add_space(2.0);
+                            }
+                        });
+                }
+                None => {
+                    ui.label(egui::RichText::new("No release notes.").weak());
+                }
+            }
+
+            ui.separator();
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Got it").clicked() {
+                    self.changelog_open = false;
+                }
+            });
+        });
+
+        // Click outside the modal (on the dimmed backdrop) dismisses it.
+        if modal.should_close() {
+            self.changelog_open = false;
+        }
+    }
+
     /// Panels pane: per-panel enable + reorder, with each panel's own field
     /// toggles nested beneath it.
     fn panels_settings(&mut self, ui: &mut egui::Ui) {
@@ -1722,12 +1809,21 @@ impl eframe::App for App {
                 // Header: title + subtitle on the left, theme toggle on the right.
                 ui.horizontal(|ui| {
                     ui.heading("Nybble");
-                    ui.label(
-                        egui::RichText::new(concat!("v", env!("CARGO_PKG_VERSION")))
-                            .monospace()
-                            .weak()
-                            .small(),
-                    );
+                    let version_clicked = ui
+                        .add(
+                            egui::Label::new(
+                                egui::RichText::new(concat!("v", env!("CARGO_PKG_VERSION")))
+                                    .monospace()
+                                    .weak()
+                                    .small(),
+                            )
+                            .sense(egui::Sense::click()),
+                        )
+                        .on_hover_text("What's new")
+                        .clicked();
+                    if version_clicked {
+                        self.changelog_open = true;
+                    }
                     // Debug-only window-size readout, so layout bugs can be
                     // reported by their exact triggering size.
                     if cfg!(debug_assertions) {
@@ -1854,6 +1950,7 @@ impl eframe::App for App {
         });
 
         self.settings_window(ui.ctx());
+        self.changelog_window(ui.ctx());
         self.toast(ui.ctx());
     }
 
@@ -1875,6 +1972,9 @@ impl eframe::App for App {
             storage.set_string("custom_w", sz.x.to_string());
             storage.set_string("custom_h", sz.y.to_string());
         }
+        // Mark the running version as seen so the "What's new" dialog only
+        // appears once per upgrade.
+        storage.set_string("last_seen_version", env!("CARGO_PKG_VERSION").to_owned());
         self.settings.save(storage);
     }
 }

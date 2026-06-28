@@ -51,6 +51,7 @@ Public API re-exported from `lib.rs`: `Value`, `Width`, `Signedness`, `eval`, `E
 - **`settings.rs`** — `Settings` (panel order/visibility, per-field toggles, `CopyOptions`) edited via the gear-icon modal. `Panel` enum drives the data-driven layout in `App::ui`; `CopyOptions::apply` is the single clipboard transform. Self-contained string KV (de)serialization plumbed through `App::new`/`App::save`.
 - **`theme.rs`** — `ThemeMode { Auto, Light, Dark }`, indigo-accented palette. `widgets.active.fg_stroke` doubles as egui's "strong" text color.
 - **`widgets/bitgrid.rs`** — clickable bit grid MSB→LSB, nibble-grouped, returns toggled `Value` on click.
+- **`changelog.rs`** — embedded `ENTRIES` release notes powering the "What's new" dialog. `App` auto-opens it once when the running version differs from the persisted `last_seen_version`; the header version label reopens it.
 
 eframe is pulled with `default-features = false`; only `glow`, `default_fonts`, `persistence`, and `x11` (unix only) are enabled. `wayland` was dropped (crashes under WSL); `accesskit` disabled (needs D-Bus).
 
@@ -62,7 +63,7 @@ In float mode, `float_value: f64` is the currency instead of `Value`.
 
 ## Persisted preferences
 
-`theme_mode`, `history_base`, `view_mode`, `number_mode`, `custom_w`/`custom_h`, `auto_check_updates`, and the settings keys (`panel_order`, `panel_*`, `field_*`, `show_fixed_point`/`show_bit_slicer`, `copy_*`) — stored via eframe's persistence feature. Value and history are session-only.
+`theme_mode`, `history_base`, `view_mode`, `number_mode`, `custom_w`/`custom_h`, `auto_check_updates`, `last_seen_version` (drives the "What's new" dialog — shown once when the running version differs), and the settings keys (`panel_order`, `panel_*`, `field_*`, `show_fixed_point`/`show_bit_slicer`, `copy_*`) — stored via eframe's persistence feature. Value and history are session-only.
 
 ## Where to make changes
 
@@ -76,6 +77,7 @@ In float mode, `float_value: f64` is the currency instead of `Value`.
 | Add a float-mode operator | `crates/core/src/float.rs` |
 | Add a UI section | `crates/gui/src/app.rs` (new fn on `App`, add a `Panel` variant in `settings.rs`, wire into `App::render_panel`) |
 | Add/adjust a setting | `crates/gui/src/settings.rs` (struct field + load/save) and the modal in `App::settings_body` |
+| Add release notes / changelog entry | `crates/gui/src/changelog.rs` (`ENTRIES`, newest first) + bump `version` in `crates/gui/Cargo.toml` to match |
 | Add a reusable widget | `crates/gui/src/widgets/` (new module + re-export in `mod.rs`) |
 | Tweak colors/spacing | `crates/gui/src/theme.rs` |
 
