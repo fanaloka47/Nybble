@@ -47,17 +47,17 @@ Goal: a clean `cargo clippy`, so it can act as a regression net for later phases
 CLAUDE.md core rule: "all numeric logic lives in `nybble-core`" / "Never put
 numeric decisions in the GUI." These violate it.
 
-- [ ] **3a. Move `parse_base` + `strip_radix_prefix` into core.**
+- [x] **3a. Move `parse_base` + `strip_radix_prefix` into core.**
   - From `app.rs:2567-2610` → `crates/core/src/parse.rs` (next to `parse_literal`,
     which already does prefix handling — dedupe against it).
   - Re-export from `lib.rs`; update the two callers (`on_field_edit`, `on_field_edit_float`).
   - Add core tests for the radix/sign/whitespace cases.
   - Commit: `Move base-field parsing into nybble-core`
-- [ ] **3b. Add a `buffer_mut(field) -> &mut String` accessor on `App`.**
+- [x] **3b. Add a `buffer_mut(field) -> &mut String` accessor on `App`.**
   - Kills the 4 hand-written `match field { Hex => &mut self.hex, … }` blocks
     (`app.rs:579`, `617`, `1129`, `1182`) and their `unreachable!()` arms.
   - Commit: `Add App::buffer_mut to dedupe field/buffer dispatch`
-- [ ] **3c. Extract the drawn icon buttons into `widgets/`.**
+- [x] **3c. Extract the drawn icon buttons into `widgets/`.**
   - `copy/send/settings/close/triangle/theme` icons + `draw_*` glyphs (`app.rs:2000-2305`)
     → `crates/gui/src/widgets/icons.rs`, re-export via `widgets/mod.rs`
     (the documented convention; `bitgrid.rs` already follows it).
