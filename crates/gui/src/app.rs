@@ -175,6 +175,31 @@ struct HistoryEntry {
     result: HistoryResult,
 }
 
+/// Categories in the settings modal's left-hand navigation. Session-only state.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum SettingsTab {
+    #[default]
+    Panels,
+    Copy,
+    Expressions,
+}
+
+impl SettingsTab {
+    const ALL: [SettingsTab; 3] = [
+        SettingsTab::Panels,
+        SettingsTab::Copy,
+        SettingsTab::Expressions,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            SettingsTab::Panels => "Panels",
+            SettingsTab::Copy => "Copy",
+            SettingsTab::Expressions => "Expressions",
+        }
+    }
+}
+
 pub struct App {
     value: Value,
     width: Width,
@@ -234,6 +259,8 @@ pub struct App {
     settings: Settings,
     /// Whether the settings modal window is open.
     settings_open: bool,
+    /// Selected category in the settings modal.
+    settings_tab: SettingsTab,
     /// Last window size set by a manual drag; `None` until the first resize.
     custom_size: Option<egui::Vec2>,
     /// Frames remaining before the resize-detection check re-arms after a
@@ -335,6 +362,7 @@ impl App {
             view_mode,
             settings,
             settings_open: false,
+            settings_tab: SettingsTab::default(),
             custom_size,
             resize_cooldown: 0,
             startup_resize_pending: true,
@@ -1410,7 +1438,8 @@ impl App {
         });
     }
 
-    /// The settings modal.
+    /// The settings modal: a left-hand category nav and a right content pane,
+    /// like a typical app's preferences window.
     fn settings_window(&mut self, ctx: &egui::Context) {
         if !self.settings_open {
             return;
@@ -1432,16 +1461,54 @@ impl App {
                     });
                 });
                 ui.separator();
-                self.settings_body(ui);
+
+                // Size the panes to the window: cap height so a long pane (e.g.
+                // Expressions) scrolls, and bound the content width so the modal
+                // never overflows a narrow/compact window. Title and nav stay put
+                // so the close button is always reachable.
+                let avail = ctx.content_rect();
+                let max_h = (avail.height() - 140.0).max(220.0);
+                let nav_w = 104.0;
+                let content_w = (avail.width() - nav_w - 64.0).clamp(220.0, 456.0);
+                ui.horizontal_top(|ui| {
+                    // Left: category navigation. A left-justified layout makes
+                    // each item fill the nav width with its label aligned left.
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(nav_w, 0.0),
+                        egui::Layout::top_down_justified(egui::Align::LEFT),
+                        |ui| {
+                            for tab in SettingsTab::ALL {
+                                let selected = self.settings_tab == tab;
+                                if ui.selectable_label(selected, tab.label()).clicked() {
+                                    self.settings_tab = tab;
+                                }
+                            }
+                        },
+                    );
+                    ui.separator();
+                    // Right: the selected category's content.
+                    ui.vertical(|ui| {
+                        ui.set_width(content_w);
+                        egui::ScrollArea::vertical()
+                            .max_height(max_h)
+                            .auto_shrink([false, true])
+                            .show(ui, |ui| match self.settings_tab {
+                                SettingsTab::Panels => self.panels_settings(ui),
+                                SettingsTab::Copy => self.copy_settings(ui),
+                                SettingsTab::Expressions => expression_reference(ui),
+                            });
+                    });
+                });
             });
     }
 
-    fn settings_body(&mut self, ui: &mut egui::Ui) {
-        // Panels: per-row enable + reorder, with each panel's own field toggles
-        // nested beneath it. Defer moves until after the loop so we never mutate
-        // the order while iterating its indices.
-        ui.label(egui::RichText::new("PANELS").weak().small());
-        ui.add_space(2.0);
+    /// Panels pane: per-panel enable + reorder, with each panel's own field
+    /// toggles nested beneath it.
+    fn panels_settings(&mut self, ui: &mut egui::Ui) {
+        ui.label(egui::RichText::new("Panels & fields").strong());
+        ui.add_space(6.0);
+        // Defer moves until after the loop so we never mutate the order while
+        // iterating its indices.
         let mut move_up: Option<usize> = None;
         let mut move_down: Option<usize> = None;
         let order = self.settings.panel_order.clone();
@@ -1478,14 +1545,12 @@ impl App {
         if let Some(i) = move_down {
             self.settings.move_down(i);
         }
+    }
 
-        ui.add_space(8.0);
-        ui.separator();
-        ui.add_space(8.0);
-
-        // Copy behaviour, with a live preview of a sample hex value.
-        ui.label(egui::RichText::new("COPY").weak().small());
-        ui.add_space(2.0);
+    /// Copy pane: clipboard options with a live preview of a sample hex value.
+    fn copy_settings(&mut self, ui: &mut egui::Ui) {
+        ui.label(egui::RichText::new("Copy behaviour").strong());
+        ui.add_space(6.0);
         ui.checkbox(
             &mut self.settings.copy.prepend_prefix,
             "Prepend base prefix",
@@ -1499,7 +1564,7 @@ impl App {
             "Keep group separators",
         );
         let preview = self.settings.copy.apply("HEX", "00DE_AD00");
-        ui.add_space(4.0);
+        ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("Preview").weak().small());
             ui.monospace(egui::RichText::new(preview).color(theme::accent(ui.ctx())));
@@ -2040,6 +2105,171 @@ fn draw_sun(p: &egui::Painter, c: egui::Pos2, col: egui::Color32) {
 fn section_label(ui: &mut egui::Ui, text: &str) {
     ui.label(egui::RichText::new(text).weak().small());
     ui.add_space(4.0);
+}
+
+/// A two-column reference table: a fixed-width monospace token on the left and a
+/// wrapping prose description on the right (wrapping keeps it inside a narrow
+/// window instead of forcing the modal wider).
+fn ref_table(ui: &mut egui::Ui, rows: &[(&str, &str)], token_w: f32) {
+    for (token, desc) in rows {
+        ui.horizontal_top(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            ui.allocate_ui_with_layout(
+                egui::vec2(token_w, 0.0),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    ui.monospace(egui::RichText::new(*token).strong());
+                },
+            );
+            ui.add(egui::Label::new(egui::RichText::new(*desc).weak()).wrap());
+        });
+    }
+}
+
+/// The expression-language reference, rendered natively. Curated from
+/// `docs/expressions.md` (kept in step with the `nybble-core` evaluators); not a
+/// verbatim copy. ASCII-only so it renders in the bundled JetBrains Mono.
+fn expression_reference(ui: &mut egui::Ui) {
+    let accent = theme::accent(ui.ctx());
+    let heading = |ui: &mut egui::Ui, text: &str| {
+        ui.add_space(8.0);
+        ui.label(egui::RichText::new(text).strong().color(accent));
+        ui.add_space(2.0);
+    };
+    let note = |ui: &mut egui::Ui, text: &str| {
+        ui.add_space(2.0);
+        ui.label(egui::RichText::new(text).weak().small());
+    };
+
+    ui.label(egui::RichText::new("Expressions").strong());
+    ui.add_space(4.0);
+    ui.label(
+        egui::RichText::new(
+            "Type an expression and press Enter; the result becomes the current \
+             value. Integer and float mode share one grammar — switch with the \
+             int/float toggle. Integer results wrap and mask to the active bit \
+             width; float is full f64.",
+        )
+        .weak(),
+    );
+
+    heading(ui, "Literals");
+    ref_table(
+        ui,
+        &[
+            ("42", "decimal"),
+            ("0xFF", "hexadecimal"),
+            ("0b1010", "binary"),
+            ("0o17", "octal"),
+            ("1.5", "decimal fraction (float only)"),
+            ("1e6", "scientific (float only)"),
+        ],
+        110.0,
+    );
+    note(ui, "_ may group digits anywhere: 1_000, 0xDEAD_BEEF.");
+
+    heading(ui, "Names & constants");
+    ref_table(
+        ui,
+        &[
+            ("ans", "the current value (both modes)"),
+            ("pi", "3.14159... (float only)"),
+            ("e", "2.71828... (float only)"),
+            ("tau", "2*pi = 6.28318... (float only)"),
+        ],
+        110.0,
+    );
+
+    heading(ui, "Operators - integer mode");
+    ref_table(
+        ui,
+        &[
+            ("| ^ &", "bitwise or, xor, and"),
+            ("~", "bitwise not"),
+            ("<< >>", "shift left / right (arithmetic when signed)"),
+            ("+ - * / %", "arithmetic; / and % are sign-aware"),
+            ("**", "power, right-associative"),
+            ("-x", "two's-complement negate"),
+        ],
+        110.0,
+    );
+    note(ui, "Every result is re-masked to the active width.");
+
+    heading(ui, "Operators - float mode");
+    ref_table(
+        ui,
+        &[
+            ("+ - * / %", "arithmetic; 1/0 = inf, 0/0 = nan"),
+            ("**", "power, right-associative; 2 ** 0.5 = 1.4142"),
+            ("-x", "negate"),
+        ],
+        110.0,
+    );
+    note(
+        ui,
+        "Bitwise and shift operators are rejected in float mode.",
+    );
+
+    heading(ui, "Functions - integer mode");
+    ref_table(
+        ui,
+        &[
+            ("pow(x, y)", "x to the power y (= x ** y)"),
+            ("sqrt(x)", "integer square root (floor)"),
+            ("log2(x)", "floor of log2 (error if x = 0)"),
+            ("clog2(x)", "ceil of log2; bits to index x values"),
+            ("popcount(x)", "number of set bits"),
+            ("abs(x)", "absolute value (sign-aware)"),
+            ("sign(x)", "-1, 0, or 1 (sign-aware)"),
+            ("fact(x)", "factorial (wraps to width)"),
+            ("gcd(x, y)", "greatest common divisor"),
+            ("lcm(x, y)", "least common multiple"),
+            ("min(x, y)", "smaller value (sign-aware)"),
+            ("max(x, y)", "larger value (sign-aware)"),
+            ("mod(x, y)", "remainder (= %)"),
+        ],
+        110.0,
+    );
+
+    heading(ui, "Functions - float mode");
+    let group = |ui: &mut egui::Ui, label: &str, fns: &str| {
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            ui.label(egui::RichText::new(format!("{label}:")).weak());
+            ui.monospace(fns);
+        });
+    };
+    group(
+        ui,
+        "trig (rad)",
+        "sin cos tan · asin acos atan · atan2(y,x)",
+    );
+    group(ui, "trig (deg)", "sind cosd tand · asind acosd atand");
+    group(ui, "hyperbolic", "sinh cosh tanh · asinh acosh atanh");
+    group(ui, "logs / exp", "ln log10 log2 · log(x,base) · exp exp2");
+    group(ui, "powers / roots", "sqrt cbrt · pow(x,y) · root(x,n)");
+    group(ui, "rounding", "floor ceil round trunc · abs sign");
+    group(ui, "helpers", "hypot min max mod gcd lcm fact");
+    note(
+        ui,
+        "Out-of-domain calls (e.g. sqrt(-1)) return NaN, never an error.",
+    );
+
+    heading(ui, "Examples");
+    ref_table(
+        ui,
+        &[
+            ("0xFF & (1 << 3)", "= 8"),
+            ("clog2(1024)", "= 10"),
+            ("2 ** 8", "= 256"),
+            ("gcd(54, 24)", "= 6"),
+            ("sqrt(2)", "= 1.4142135623730951"),
+            ("sin(pi / 2)", "= 1"),
+            ("log(8, 2)", "= 3"),
+            ("hypot(3, 4)", "= 5"),
+        ],
+        150.0,
+    );
 }
 
 /// Render the result `value` in one base or all four, as click-to-copy lines.
