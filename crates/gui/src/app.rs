@@ -6,7 +6,7 @@
 //! history all read from it. Signedness only changes the decimal rendering and
 //! the meaning of `>>` and `/`.
 
-use nybble_core::{eval, eval_float, f64_to_value, fixed, Signedness, Value, Width};
+use nybble_core::{eval, eval_float, f64_to_value, fixed, parse_base, Signedness, Value, Width};
 
 use crate::settings::{CopyOptions, Panel, Settings};
 use crate::theme::{self, ThemeMode};
@@ -2554,52 +2554,4 @@ fn value_line(ui: &mut egui::Ui, label: &str, text: String, copy: CopyOptions) -
         }
     });
     clicked
-}
-
-/// Parse a base-field string into a width-masked [`Value`]. Whitespace and `_`
-/// separators are ignored; hex/bin/oct accept an optional `0x`/`0b`/`0o` prefix.
-/// Decimal accepts a leading `-` when in signed mode.
-fn parse_base(text: &str, radix: u32, width: Width, sign: Signedness) -> Result<Value, String> {
-    let cleaned: String = text
-        .chars()
-        .filter(|c| !c.is_whitespace() && *c != '_')
-        .collect();
-    if cleaned.is_empty() {
-        return Ok(Value::new(0, width));
-    }
-
-    if radix == 10 {
-        if let Some(mag) = cleaned.strip_prefix('-') {
-            if sign == Signedness::Unsigned {
-                return Err("negative value in unsigned mode".to_owned());
-            }
-            let n: i128 = mag
-                .parse()
-                .map_err(|_| "invalid decimal number".to_owned())?;
-            return Ok(Value::new((-n) as u128, width));
-        }
-        let n: u128 = cleaned
-            .parse()
-            .map_err(|_| "invalid decimal number".to_owned())?;
-        return Ok(Value::new(n, width));
-    }
-
-    let body = strip_radix_prefix(&cleaned, radix);
-    let n =
-        u128::from_str_radix(body, radix).map_err(|_| format!("invalid base-{radix} number"))?;
-    Ok(Value::new(n, width))
-}
-
-fn strip_radix_prefix(s: &str, radix: u32) -> &str {
-    let prefix = match radix {
-        16 => "0x",
-        2 => "0b",
-        8 => "0o",
-        _ => return s,
-    };
-    if s.len() >= 2 && s[..2].eq_ignore_ascii_case(prefix) {
-        &s[2..]
-    } else {
-        s
-    }
 }

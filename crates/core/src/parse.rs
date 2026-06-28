@@ -1,11 +1,9 @@
-//! Parsing of a single numeric literal into a raw `u128` magnitude.
-//!
-//! Accepted forms (case-insensitive prefixes, optional `_` separators):
-//! `0x1A`, `0b1010`, `0o17`, `255`, `DE_AD` only with a `0x` prefix. A bare
-//! string of hex letters is *not* a number here — the expression layer treats
-//! letters as identifiers (e.g. `ans`), so hex needs the `0x` prefix.
+//! Parsing of a single numeric literal into a raw `u128` magnitude, and
+//! parsing of typed base-field strings (hex/bin/oct/dec) into [`Value`].
 
 use std::fmt;
+
+use crate::value::{Signedness, Value, Width};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ParseError {
@@ -71,6 +69,54 @@ pub fn parse_literal(s: &str) -> Result<u128, ParseError> {
     }
 }
 
+/// Strip the radix prefix (`0x`, `0b`, `0o`) from `s`, case-insensitively.
+/// Returns `s` unchanged for unsupported radix values or when no prefix is present.
+fn strip_radix_prefix(s: &str, radix: u32) -> &str {
+    let prefix = match radix {
+        16 => "0x",
+        2 => "0b",
+        8 => "0o",
+        _ => return s,
+    };
+    strip_prefix_ci(s, prefix).unwrap_or(s)
+}
+
+/// Parse a base-field string (hex, dec, bin, or oct) into a width-masked [`Value`].
+///
+/// Whitespace and `_` separators are stripped before parsing. Each radix optionally
+/// accepts a `0x`/`0b`/`0o` prefix. Decimal accepts a leading `-` in signed mode.
+/// An empty or all-whitespace input produces `Value::new(0, width)`.
+pub fn parse_base(text: &str, radix: u32, width: Width, sign: Signedness) -> Result<Value, String> {
+    let cleaned: String = text
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '_')
+        .collect();
+    if cleaned.is_empty() {
+        return Ok(Value::new(0, width));
+    }
+
+    if radix == 10 {
+        if let Some(mag) = cleaned.strip_prefix('-') {
+            if sign == Signedness::Unsigned {
+                return Err("negative value in unsigned mode".to_owned());
+            }
+            let n: i128 = mag
+                .parse()
+                .map_err(|_| "invalid decimal number".to_owned())?;
+            return Ok(Value::new((-n) as u128, width));
+        }
+        let n: u128 = cleaned
+            .parse()
+            .map_err(|_| "invalid decimal number".to_owned())?;
+        return Ok(Value::new(n, width));
+    }
+
+    let body = strip_radix_prefix(&cleaned, radix);
+    let n =
+        u128::from_str_radix(body, radix).map_err(|_| format!("invalid base-{radix} number"))?;
+    Ok(Value::new(n, width))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,5 +158,45 @@ mod tests {
             parse_literal("0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF").unwrap(),
             u128::MAX
         );
+    }
+
+    #[test]
+    fn parse_base_hex() {
+        let w = Width::new(32).unwrap();
+        let v = parse_base("DEADBEEF", 16, w, Signedness::Unsigned).unwrap();
+        assert_eq!(v.raw(), 0xDEADBEEF);
+        // With prefix
+        let v = parse_base("0xDEAD_BEEF", 16, w, Signedness::Unsigned).unwrap();
+        assert_eq!(v.raw(), 0xDEADBEEF);
+    }
+
+    #[test]
+    fn parse_base_dec_signed() {
+        let w = Width::new(32).unwrap();
+        let v = parse_base("-1", 10, w, Signedness::Signed).unwrap();
+        assert_eq!(v.raw(), 0xFFFF_FFFF); // two's complement -1 in 32 bits
+                                          // Unsigned mode rejects negative
+        assert!(parse_base("-1", 10, w, Signedness::Unsigned).is_err());
+    }
+
+    #[test]
+    fn parse_base_whitespace_and_underscores() {
+        let w = Width::new(16).unwrap();
+        let v = parse_base("  FF FF  ", 16, w, Signedness::Unsigned).unwrap();
+        assert_eq!(v.raw(), 0xFFFF);
+    }
+
+    #[test]
+    fn parse_base_empty_yields_zero() {
+        let w = Width::new(8).unwrap();
+        let v = parse_base("", 16, w, Signedness::Unsigned).unwrap();
+        assert_eq!(v.raw(), 0);
+    }
+
+    #[test]
+    fn parse_base_bin_with_prefix() {
+        let w = Width::new(8).unwrap();
+        let v = parse_base("0b1010_1010", 2, w, Signedness::Unsigned).unwrap();
+        assert_eq!(v.raw(), 0xAA);
     }
 }
