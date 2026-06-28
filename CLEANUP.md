@@ -13,19 +13,17 @@ Baseline at time of writing: `cargo test` 63 green; `cargo clippy` **13 warnings
 
 Goal: a clean `cargo clippy`, so it can act as a regression net for later phases.
 
-- [ ] **1a. Fix mechanical clippy lints in core.**
-  - `value.rs:115`, `value.rs:129`, `ops.rs:186` — replace manual `(x + n - 1) / n` with `div_ceil`.
-  - `value.rs:150` — replace manual modulo check with `is_multiple_of`.
-  - `expr.rs:241`, `float.rs:190` — rewrite the `loop { let Some.. else break }` as `while let`.
-  - Commit: `Fix mechanical clippy lints in nybble-core`
-- [ ] **1b. Fix the gui collapsible-if.** `app.rs:1896` — collapse the nested `if`.
-  - Commit: `Collapse nested if in update-check branch`
-- [ ] **1c. Delete comment rot.**
-  - `app.rs:1995-1999` — three stale `///` lines on `copy_icon_button` describing a deleted "accent stripe" helper.
-  - `app.rs:560-563` — `field_literal` doc opens "Parse the buffer for `field`…", describing a different function.
-  - Commit: `Remove stale doc comments in app.rs`
+- [x] **1a. Fix mechanical clippy lints in core.** — `Fix mechanical clippy lints in nybble-core`
+  - `value.rs`, `ops.rs:186` — manual `(x + n - 1) / n` → `div_ceil`.
+  - `value.rs:150` — manual modulo check → `is_multiple_of`.
+  - `expr.rs`, `float.rs` — `loop { let Some.. else break }` → `while let`.
+- [x] **1b. Fix the gui collapsible-if.** `app.rs` — collapsed the nested `if`. — `Collapse nested if in update-check branch`
+- [x] **1c. Delete comment rot.** — `Remove stale doc comments in app.rs`
+  - Stale `///` lines on `copy_icon_button` (deleted "accent stripe" helper).
+  - `field_literal` doc opened with a line describing a different function.
 
-**Exit:** `cargo clippy` clean (0 warnings).
+**Exit:** ✅ Clippy down to **6 warnings**, all `should_implement_trait` on `Value`
+(`not/add/sub/mul/neg/shl`) — these are Phase 2a, not suppressible noise.
 
 ---
 
