@@ -77,6 +77,8 @@ enum ViewMode {
 impl ViewMode {
     const COMPACT_SIZE: egui::Vec2 = egui::vec2(420.0, 700.0);
     const FULL_SIZE: egui::Vec2 = egui::vec2(880.0, 760.0);
+    /// Tolerance (logical points) for treating a window size as "on preset".
+    const SNAP_TOLERANCE: f32 = 4.0;
 
     fn label(self) -> &'static str {
         match self {
@@ -236,6 +238,10 @@ pub struct App {
     /// event loop is running (calling send_viewport_cmd in new() resets the
     /// Wayland connection before the loop is ready).
     startup_resize_pending: bool,
+    /// Last observed `pixels_per_point`. A change means the window moved to a
+    /// monitor with a different scale factor; used to suppress the resize
+    /// detector across DPI transitions.
+    last_ppp: f32,
 
     // Auto-update
     auto_check_updates: bool,
@@ -324,6 +330,7 @@ impl App {
             custom_size,
             resize_cooldown: 0,
             startup_resize_pending: true,
+            last_ppp: 0.0,
             auto_check_updates,
             update_rx: None,
             update_available: None,
@@ -1308,6 +1315,27 @@ impl App {
     }
 }
 
+/// Clamp a desired logical window size to roughly fit the current monitor.
+///
+/// Presets are fixed logical sizes; on a small or high-DPI screen (e.g. a 4K
+/// panel at 150%+) the `Full` preset can exceed the monitor's usable area, so
+/// Windows would clamp/reposition the window and the preset would never "take".
+/// We shrink the request to fit, leaving a margin for the title bar and
+/// taskbar, but never below the app's minimum size. If the monitor size isn't
+/// known yet (e.g. the very first frame), the size is returned unchanged.
+fn clamp_to_monitor(ctx: &egui::Context, size: egui::Vec2) -> egui::Vec2 {
+    const MIN: egui::Vec2 = egui::vec2(520.0, 480.0);
+    // Rough allowance for window chrome and the taskbar (logical points).
+    const MARGIN: egui::Vec2 = egui::vec2(32.0, 96.0);
+    match ctx.input(|i| i.viewport().monitor_size) {
+        Some(monitor) if monitor.x > 0.0 && monitor.y > 0.0 => {
+            let avail = (monitor - MARGIN).max(MIN);
+            size.min(avail)
+        }
+        _ => size,
+    }
+}
+
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.drain_update_rx();
@@ -1321,31 +1349,50 @@ impl eframe::App for App {
                 ViewMode::Full => ViewMode::FULL_SIZE,
                 ViewMode::Custom => self.custom_size.unwrap_or(ViewMode::FULL_SIZE),
             };
+            let startup_size = clamp_to_monitor(ui.ctx(), startup_size);
             ui.ctx()
                 .send_viewport_cmd(egui::ViewportCommand::InnerSize(startup_size));
             self.resize_cooldown = 20;
         }
 
+        // Per-monitor DPI scale. On a Windows multi-monitor setup this changes
+        // when the window crosses to a screen with a different scale factor
+        // (e.g. an HD panel at 100% to a 4K panel at 150%). content_rect() is
+        // reported in logical points, so a ppp change makes the size appear to
+        // jump even though the physical window is unchanged — which the resize
+        // detector below would misread as a manual resize and flip to Custom.
+        // Arm the cooldown for a few frames so the DPI transition settles.
+        let ppp = ui.ctx().pixels_per_point();
+        if (ppp - self.last_ppp).abs() > f32::EPSILON {
+            self.last_ppp = ppp;
+            self.resize_cooldown = self.resize_cooldown.max(3);
+        }
+
         // Detect manual window resize using content_rect, which is always
         // available (unlike inner_rect which is often None under WSL/glow).
-        // Skip during the cooldown that follows every programmatic resize.
+        // Skip during the cooldown that follows every programmatic resize or
+        // DPI change. Preset sizes are compared after clamping to the current
+        // monitor, so a preset that had to shrink to fit a smaller/high-DPI
+        // screen still counts as "on preset" rather than demoting to Custom.
         let current_size = ui.ctx().content_rect().size();
         if self.resize_cooldown > 0 {
             self.resize_cooldown -= 1;
         } else {
+            let compact = clamp_to_monitor(ui.ctx(), ViewMode::COMPACT_SIZE);
+            let full = clamp_to_monitor(ui.ctx(), ViewMode::FULL_SIZE);
             match self.view_mode {
                 ViewMode::Compact | ViewMode::Full => {
                     let expected = if self.view_mode == ViewMode::Compact {
-                        ViewMode::COMPACT_SIZE
+                        compact
                     } else {
-                        ViewMode::FULL_SIZE
+                        full
                     };
-                    if (current_size - expected).length() > 4.0 {
+                    if (current_size - expected).length() > ViewMode::SNAP_TOLERANCE {
                         // Snap to a preset if the size happens to match one;
                         // otherwise enter Custom and remember this size.
-                        if (current_size - ViewMode::COMPACT_SIZE).length() <= 4.0 {
+                        if (current_size - compact).length() <= ViewMode::SNAP_TOLERANCE {
                             self.view_mode = ViewMode::Compact;
-                        } else if (current_size - ViewMode::FULL_SIZE).length() <= 4.0 {
+                        } else if (current_size - full).length() <= ViewMode::SNAP_TOLERANCE {
                             self.view_mode = ViewMode::Full;
                         } else {
                             self.view_mode = ViewMode::Custom;
@@ -1411,6 +1458,7 @@ impl eframe::App for App {
                                 };
                                 self.view_mode = next_mode;
                                 self.resize_cooldown = 10;
+                                let new_size = clamp_to_monitor(ui.ctx(), new_size);
                                 ui.ctx().send_viewport_cmd(
                                     egui::ViewportCommand::InnerSize(new_size),
                                 );
