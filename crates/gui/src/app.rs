@@ -570,18 +570,23 @@ impl App {
         }
     }
 
+    fn buffer_mut(&mut self, field: Field) -> &mut String {
+        match field {
+            Field::Hex => &mut self.hex,
+            Field::Dec => &mut self.dec,
+            Field::Bin => &mut self.bin,
+            Field::Oct => &mut self.oct,
+            Field::Fixed => unreachable!(),
+        }
+    }
+
     fn on_field_edit(&mut self, field: Field) {
         if self.is_float_mode() {
             self.on_field_edit_float(field);
             return;
         }
-        let (text, radix) = match field {
-            Field::Hex => (self.hex.clone(), 16),
-            Field::Dec => (self.dec.clone(), 10),
-            Field::Bin => (self.bin.clone(), 2),
-            Field::Oct => (self.oct.clone(), 8),
-            Field::Fixed => unreachable!("fixed field handled separately"),
-        };
+        let text = self.buffer_mut(field).clone();
+        let radix = field_radix(field);
         match parse_base(&text, radix, self.width, self.sign) {
             Ok(v) => {
                 self.value = v;
@@ -613,12 +618,8 @@ impl App {
                 }
             }
             Field::Hex | Field::Bin | Field::Oct => {
-                let (text, radix) = match field {
-                    Field::Hex => (self.hex.clone(), 16),
-                    Field::Bin => (self.bin.clone(), 2),
-                    Field::Oct => (self.oct.clone(), 8),
-                    _ => unreachable!(),
-                };
+                let text = self.buffer_mut(field).clone();
+                let radix = field_radix(field);
                 let w64 = Width::new(64).unwrap();
                 match parse_base(&text, radix, w64, Signedness::Unsigned) {
                     Ok(v) => {
@@ -1125,13 +1126,7 @@ impl App {
             }
             let label = field_label(field);
             let (edit_changed, enter_pressed, copy_clicked, send_clicked, buf_text) = {
-                let buf: &mut String = match field {
-                    Field::Hex => &mut self.hex,
-                    Field::Dec => &mut self.dec,
-                    Field::Bin => &mut self.bin,
-                    Field::Oct => &mut self.oct,
-                    Field::Fixed => unreachable!(),
-                };
+                let buf = self.buffer_mut(field);
                 ui.horizontal_top(|ui| {
                     ui.add_sized(
                         [36.0, ui.spacing().interact_size.y],
@@ -1178,14 +1173,7 @@ impl App {
             };
             if edit_changed {
                 // Strip newlines the multiline widget may insert when Enter is pressed.
-                let buf: &mut String = match field {
-                    Field::Hex => &mut self.hex,
-                    Field::Dec => &mut self.dec,
-                    Field::Bin => &mut self.bin,
-                    Field::Oct => &mut self.oct,
-                    Field::Fixed => unreachable!(),
-                };
-                buf.retain(|c| c != '\n' && c != '\r');
+                self.buffer_mut(field).retain(|c| c != '\n' && c != '\r');
                 self.on_field_edit(field);
                 if enter_pressed {
                     self.flash_until = ui.input(|i| i.time) + 0.8;
@@ -1988,6 +1976,16 @@ fn field_label(field: Field) -> &'static str {
         Field::Bin => "BIN",
         Field::Oct => "OCT",
         Field::Fixed => "FIX",
+    }
+}
+
+fn field_radix(field: Field) -> u32 {
+    match field {
+        Field::Hex => 16,
+        Field::Dec => 10,
+        Field::Bin => 2,
+        Field::Oct => 8,
+        Field::Fixed => unreachable!(),
     }
 }
 
