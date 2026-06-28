@@ -2322,3 +2322,242 @@ fn value_line(ui: &mut egui::Ui, label: &str, text: String, copy: CopyOptions) -
     });
     clicked
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nybble_core::{Signedness, Value, Width};
+
+    impl App {
+        fn for_test() -> Self {
+            let width = Width::new(32).unwrap();
+            let mut app = Self {
+                value: Value::new(0, width),
+                width,
+                sign: Signedness::Unsigned,
+                frac_bits: 0,
+                number_mode: NumberMode::Integer,
+                float_value: 0.0,
+                hex: String::new(),
+                dec: String::new(),
+                bin: String::new(),
+                oct: String::new(),
+                fixed_input: String::new(),
+                expr: String::new(),
+                history: Vec::new(),
+                history_base: HistoryBase::Dec,
+                expr_error: None,
+                expr_focus_request: false,
+                status: None,
+                status_until: 0.0,
+                flash_until: 0.0,
+                value_just_changed: false,
+                range_hi: 7,
+                range_lo: 0,
+                width_scrub_accum: 0.0,
+                mode_toggle_anim: 0.0,
+                theme_mode: ThemeMode::default(),
+                view_mode: ViewMode::default(),
+                settings: Settings::default(),
+                settings_open: false,
+                settings_tab: SettingsTab::default(),
+                changelog_open: false,
+                custom_size: None,
+                resize_cooldown: 0,
+                startup_resize_pending: false,
+                last_ppp: 0.0,
+                auto_check_updates: false,
+                update_rx: None,
+                update_available: None,
+                updating: false,
+            };
+            app.refresh(None);
+            app
+        }
+    }
+
+    fn w(bits: u32) -> Width {
+        Width::new(bits).unwrap()
+    }
+
+    // --- refresh ---
+
+    #[test]
+    fn refresh_populates_all_buffers() {
+        let mut app = App::for_test();
+        app.value = Value::new(0xDEAD_BEEF, w(32));
+        app.refresh(None);
+        assert_eq!(app.hex, "DEAD_BEEF");
+        assert_eq!(app.dec, "3735928559");
+        assert!(!app.bin.is_empty());
+        assert!(!app.oct.is_empty());
+    }
+
+    #[test]
+    fn refresh_skip_preserves_skipped_field() {
+        let mut app = App::for_test();
+        app.hex = "SENTINEL".to_string();
+        app.value = Value::new(0xFF, w(32));
+        app.refresh(Some(Field::Hex));
+        assert_eq!(app.hex, "SENTINEL");
+        assert_eq!(app.dec, "255");
+    }
+
+    #[test]
+    fn refresh_float_mode_uses_float_value() {
+        let mut app = App::for_test();
+        app.set_number_mode(NumberMode::Float);
+        app.float_value = 1.0;
+        app.refresh(None);
+        assert_eq!(app.dec, "1");
+        // hex/bin/oct show the IEEE-754 pattern of 1.0_f64
+        let expected_bits = f64_to_value(1.0_f64);
+        assert_eq!(app.hex, expected_bits.to_hex());
+    }
+
+    // --- set_number_mode ---
+
+    #[test]
+    fn set_number_mode_int_to_float_seeds_from_unsigned_value() {
+        let mut app = App::for_test();
+        app.value = Value::new(42, w(32));
+        app.sign = Signedness::Unsigned;
+        app.set_number_mode(NumberMode::Float);
+        assert!(app.is_float_mode());
+        assert_eq!(app.float_value, 42.0);
+    }
+
+    #[test]
+    fn set_number_mode_int_to_float_seeds_signed_interpretation() {
+        let mut app = App::for_test();
+        app.value = Value::new(0xFF, w(8)); // -1 in signed 8-bit
+        app.sign = Signedness::Signed;
+        app.set_number_mode(NumberMode::Float);
+        assert_eq!(app.float_value, -1.0);
+    }
+
+    #[test]
+    fn set_number_mode_float_to_int_preserves_integer_value() {
+        let mut app = App::for_test();
+        app.value = Value::new(99, w(32));
+        app.set_number_mode(NumberMode::Float);
+        app.float_value = 3.14;
+        app.set_number_mode(NumberMode::Integer);
+        assert!(!app.is_float_mode());
+        assert_eq!(app.value.raw(), 99);
+    }
+
+    #[test]
+    fn set_number_mode_noop_when_already_in_that_mode() {
+        let mut app = App::for_test();
+        app.value = Value::new(7, w(32));
+        let before = app.value.raw();
+        app.set_number_mode(NumberMode::Integer);
+        assert_eq!(app.value.raw(), before);
+    }
+
+    // --- recall ---
+
+    #[test]
+    fn recall_integer_restores_mode_value_sign_and_expr() {
+        let mut app = App::for_test();
+        let entry = HistoryEntry {
+            expr: "0xBEEF".to_string(),
+            result: HistoryResult::Integer {
+                value: Value::new(0xBEEF, w(16)),
+                sign: Signedness::Signed,
+            },
+        };
+        app.recall(entry);
+        assert!(!app.is_float_mode());
+        assert_eq!(app.value.raw(), 0xBEEF);
+        assert_eq!(app.width.bits(), 16);
+        assert_eq!(app.sign, Signedness::Signed);
+        assert_eq!(app.expr, "0xBEEF");
+        assert_eq!(app.hex, "BEEF");
+    }
+
+    #[test]
+    fn recall_float_restores_mode_and_float_value() {
+        let mut app = App::for_test();
+        let entry = HistoryEntry {
+            expr: "sqrt(2)".to_string(),
+            result: HistoryResult::Float(std::f64::consts::SQRT_2),
+        };
+        app.recall(entry);
+        assert!(app.is_float_mode());
+        assert_eq!(app.float_value, std::f64::consts::SQRT_2);
+        assert_eq!(app.expr, "sqrt(2)");
+    }
+
+    #[test]
+    fn recall_integer_clamps_frac_bits_to_new_width() {
+        let mut app = App::for_test();
+        app.frac_bits = 32;
+        let entry = HistoryEntry {
+            expr: "1".to_string(),
+            result: HistoryResult::Integer {
+                value: Value::new(1, w(8)),
+                sign: Signedness::Unsigned,
+            },
+        };
+        app.recall(entry);
+        assert!(app.frac_bits <= 8);
+    }
+
+    // --- on_field_edit ---
+
+    #[test]
+    fn on_field_edit_hex_parses_and_updates_other_buffers() {
+        let mut app = App::for_test();
+        app.hex = "DEADBEEF".to_string();
+        app.on_field_edit(Field::Hex);
+        assert_eq!(app.value.raw(), 0xDEAD_BEEF);
+        assert!(app.status.is_none());
+        assert_eq!(app.dec, "3735928559");
+    }
+
+    #[test]
+    fn on_field_edit_dec_parses_correctly() {
+        let mut app = App::for_test();
+        app.dec = "255".to_string();
+        app.on_field_edit(Field::Dec);
+        assert_eq!(app.value.raw(), 255);
+    }
+
+    #[test]
+    fn on_field_edit_bin_parses_correctly() {
+        let mut app = App::for_test();
+        app.bin = "1111".to_string();
+        app.on_field_edit(Field::Bin);
+        assert_eq!(app.value.raw(), 15);
+    }
+
+    #[test]
+    fn on_field_edit_invalid_input_sets_status_error() {
+        let mut app = App::for_test();
+        app.hex = "ZZZZ".to_string();
+        app.on_field_edit(Field::Hex);
+        assert!(app.status.is_some());
+    }
+
+    #[test]
+    fn on_field_edit_float_dec_updates_float_value() {
+        let mut app = App::for_test();
+        app.set_number_mode(NumberMode::Float);
+        app.dec = "3.14".to_string();
+        app.on_field_edit(Field::Dec);
+        assert!((app.float_value - 3.14).abs() < 1e-10);
+        assert!(app.status.is_none());
+    }
+
+    #[test]
+    fn on_field_edit_float_hex_reinterprets_ieee754_bits() {
+        let mut app = App::for_test();
+        app.set_number_mode(NumberMode::Float);
+        // IEEE-754 bits for 1.0_f64: 3FF0000000000000
+        app.hex = "3FF0000000000000".to_string();
+        app.on_field_edit(Field::Hex);
+        assert_eq!(app.float_value, 1.0_f64);
+    }
+}

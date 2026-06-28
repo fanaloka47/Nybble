@@ -72,7 +72,7 @@ numeric decisions in the GUI." These violate it.
 ⚠️ The GUI has **zero automated tests**. Do 4a before 4b/4c or regressions will
 slip in silently.
 
-- [ ] **4a. Characterization tests on the `App` state machine.**
+- [x] **4a. Characterization tests on the `App` state machine.**
   - Cover `set_number_mode` (int↔float seeding, `app.rs:539`), `refresh`/`refresh(skip)`
     (`app.rs:456`), `recall` (`app.rs:689`), `on_field_edit` round-trips. These need no
     egui context — they're pure state transitions on `App` fields.
