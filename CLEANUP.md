@@ -29,7 +29,7 @@ Goal: a clean `cargo clippy`, so it can act as a regression net for later phases
 
 ## Phase 2 — API hygiene (improves design, lint-driven)
 
-- [ ] **2a. Implement `std::ops` traits on `Value` instead of inherent `add/sub/mul/neg/not/shl`.**
+- [x] **2a. Implement `std::ops` traits on `Value` instead of inherent `add/sub/mul/neg/not/shl`.**
   - `ops.rs:45-113` — the `confusing_method_name` lints (`not/add/sub/mul/neg/shl`) are
     correct: for a numeric type these *should* be operator impls. Convert where the
     signature matches std (`Add/Sub/Mul/Neg/Not`); keep sign/width-aware ops
