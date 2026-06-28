@@ -557,7 +557,6 @@ impl App {
         self.refresh(None);
     }
 
-    /// Parse the buffer for `field`, update the value, and refresh the others.
     /// The current value of `field`, formatted as an expression-ready literal
     /// (with the base prefix). Underscore group separators are accepted by the
     /// expression tokenizer, so the buffers can be fed back verbatim.
@@ -1992,10 +1991,6 @@ fn field_label(field: Field) -> &'static str {
     }
 }
 
-/// Paint a 3 px accent-colored stripe on the left edge of `rect` to mark the
-/// field as an editable input.
-/// Decorate an editable field: a subtle full outline so its bounds are easy to
-/// read, plus an accent stripe down the left edge marking it as editable.
 /// Drawn "copy" icon button: two overlapping rectangles, no font dependency.
 fn copy_icon_button(ui: &mut egui::Ui) -> egui::Response {
     let h = ui.spacing().interact_size.y;
