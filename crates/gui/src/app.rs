@@ -8,6 +8,7 @@
 
 use nybble_core::{eval, eval_float, f64_to_value, fixed, Signedness, Value, Width};
 
+use crate::settings::{CopyOptions, Panel, Settings};
 use crate::theme::{self, ThemeMode};
 use crate::widgets;
 
@@ -229,6 +230,10 @@ pub struct App {
 
     theme_mode: ThemeMode,
     view_mode: ViewMode,
+    /// View/copy configuration edited via the settings modal.
+    settings: Settings,
+    /// Whether the settings modal window is open.
+    settings_open: bool,
     /// Last window size set by a manual drag; `None` until the first resize.
     custom_size: Option<egui::Vec2>,
     /// Frames remaining before the resize-detection check re-arms after a
@@ -278,6 +283,7 @@ impl App {
             .and_then(|s| s.get_string("auto_check_updates"))
             .map(|v| v != "false")
             .unwrap_or(true);
+        let settings = storage.map(Settings::load).unwrap_or_default();
 
         // Register JetBrains Mono as the primary monospace font to match the design.
         let mut fonts = egui::FontDefinitions::default();
@@ -327,6 +333,8 @@ impl App {
             },
             theme_mode,
             view_mode,
+            settings,
+            settings_open: false,
             custom_size,
             resize_cooldown: 0,
             startup_resize_pending: true,
@@ -865,6 +873,7 @@ impl App {
         }
 
         let base = self.history_base;
+        let copy = self.settings.copy;
         let accent = theme::accent(ui.ctx());
         let item_fill = ui.visuals().faint_bg_color;
         let mut recall_idx: Option<usize> = None;
@@ -916,9 +925,9 @@ impl App {
                                 expr.on_hover_text("Click to recall this expression");
                                 let line_copied = match entry.result {
                                     HistoryResult::Integer { value, sign } => {
-                                        value_lines(ui, value, sign, base)
+                                        value_lines(ui, value, sign, base, copy)
                                     }
-                                    HistoryResult::Float(x) => float_value_lines(ui, x, base),
+                                    HistoryResult::Float(x) => float_value_lines(ui, x, base, copy),
                                 };
                                 if let Some(label) = line_copied {
                                     copied = Some(label);
@@ -1017,12 +1026,30 @@ impl App {
             return;
         }
 
-        self.fixed_point(ui);
+        let show_fixed = self.settings.show_fixed_point;
+        let show_slicer = self.settings.show_bit_slicer;
+        if show_fixed {
+            self.fixed_point(ui);
+        }
+        if show_fixed && show_slicer {
+            ui.add_space(8.0);
+            ui.separator();
+            ui.add_space(6.0);
+        }
+        if show_slicer {
+            self.bit_range(ui);
+        }
+    }
 
-        ui.add_space(8.0);
-        ui.separator();
-        ui.add_space(6.0);
-        self.bit_range(ui);
+    /// Whether a base field is enabled in the current-value panel.
+    fn field_enabled(&self, field: Field) -> bool {
+        match field {
+            Field::Hex => self.settings.show_hex,
+            Field::Dec => self.settings.show_dec,
+            Field::Bin => self.settings.show_bin,
+            Field::Oct => self.settings.show_oct,
+            Field::Fixed => true,
+        }
     }
 
     /// Current value: all four bases shown stacked, each independently editable.
@@ -1051,6 +1078,9 @@ impl App {
         });
 
         for field in BASE_FIELDS {
+            if !self.field_enabled(field) {
+                continue;
+            }
             let label = field_label(field);
             let (edit_changed, enter_pressed, copy_clicked, send_clicked, buf_text) = {
                 let buf: &mut String = match field {
@@ -1121,7 +1151,8 @@ impl App {
                 }
             }
             if copy_clicked {
-                self.copy(ui.ctx(), clipboard_form(label, &buf_text), label);
+                let text = self.settings.copy.apply(label, &buf_text);
+                self.copy(ui.ctx(), text, label);
             }
             if send_clicked {
                 self.expr = self.field_literal(field);
@@ -1288,6 +1319,193 @@ impl App {
         }
     }
 
+    /// Render one panel's contents (without the surrounding card).
+    fn render_panel(&mut self, ui: &mut egui::Ui, panel: Panel) {
+        match panel {
+            Panel::Value => self.current_value_compact(ui),
+            Panel::Bits => self.bits_section(ui),
+            Panel::Format => self.format_section(ui),
+            Panel::Interpret => self.interpret_section(ui),
+            Panel::History => self.history_panel(ui),
+        }
+    }
+
+    /// Whether a panel currently has anything to show. A panel disabled in
+    /// settings is hidden; so is one whose every field/sub-block is toggled off
+    /// (so we never render an empty card), and Bits is hidden in float mode
+    /// (the value is an f64, not width-bound bits).
+    fn panel_visible(&self, panel: Panel) -> bool {
+        if !self.settings.is_panel_enabled(panel) {
+            return false;
+        }
+        match panel {
+            Panel::Bits => !self.is_float_mode(),
+            Panel::Value => {
+                self.settings.show_hex
+                    || self.settings.show_dec
+                    || self.settings.show_bin
+                    || self.settings.show_oct
+            }
+            // In integer mode the Interpret card auto-hides when both sub-blocks
+            // are off; in float mode it always shows its placeholder text.
+            Panel::Interpret => {
+                self.is_float_mode()
+                    || self.settings.show_fixed_point
+                    || self.settings.show_bit_slicer
+            }
+            _ => true,
+        }
+    }
+
+    /// The enabled, visible panels in user-chosen order.
+    fn visible_panels(&self) -> Vec<Panel> {
+        self.settings
+            .panel_order
+            .iter()
+            .copied()
+            .filter(|&p| self.panel_visible(p))
+            .collect()
+    }
+
+    /// Split the visible panels into two columns, assigning each in order to the
+    /// column with the smaller accumulated weight so the two stay balanced and
+    /// rebalance automatically as panels are toggled.
+    fn balance_columns(panels: &[Panel]) -> (Vec<Panel>, Vec<Panel>) {
+        let (mut left, mut right) = (Vec::new(), Vec::new());
+        let (mut lw, mut rw) = (0.0f32, 0.0f32);
+        for &p in panels {
+            if lw <= rw {
+                left.push(p);
+                lw += p.weight();
+            } else {
+                right.push(p);
+                rw += p.weight();
+            }
+        }
+        (left, right)
+    }
+
+    /// The field/sub-block toggles belonging to `panel`, drawn indented under
+    /// its row. Panels without fields (Bits, Format, History) render nothing.
+    fn panel_field_toggles(&mut self, ui: &mut egui::Ui, panel: Panel, enabled: bool) {
+        if !matches!(panel, Panel::Value | Panel::Interpret) {
+            return;
+        }
+        ui.indent(panel.key(), |ui| {
+            ui.add_enabled_ui(enabled, |ui| {
+                ui.horizontal_wrapped(|ui| match panel {
+                    Panel::Value => {
+                        ui.checkbox(&mut self.settings.show_hex, "HEX");
+                        ui.checkbox(&mut self.settings.show_dec, "DEC");
+                        ui.checkbox(&mut self.settings.show_bin, "BIN");
+                        ui.checkbox(&mut self.settings.show_oct, "OCT");
+                    }
+                    Panel::Interpret => {
+                        ui.checkbox(&mut self.settings.show_fixed_point, "Fixed-point");
+                        ui.checkbox(&mut self.settings.show_bit_slicer, "Bit slicer");
+                    }
+                    _ => {}
+                });
+            });
+        });
+    }
+
+    /// The settings modal.
+    fn settings_window(&mut self, ctx: &egui::Context) {
+        if !self.settings_open {
+            return;
+        }
+        // Custom title bar: the default one centers the title and is tall, so we
+        // disable it and draw our own left-aligned, compact ribbon.
+        egui::Window::new("Settings")
+            .title_bar(false)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Settings").size(13.0).strong());
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if close_icon_button(ui).clicked() {
+                            self.settings_open = false;
+                        }
+                    });
+                });
+                ui.separator();
+                self.settings_body(ui);
+            });
+    }
+
+    fn settings_body(&mut self, ui: &mut egui::Ui) {
+        // Panels: per-row enable + reorder, with each panel's own field toggles
+        // nested beneath it. Defer moves until after the loop so we never mutate
+        // the order while iterating its indices.
+        ui.label(egui::RichText::new("PANELS").weak().small());
+        ui.add_space(2.0);
+        let mut move_up: Option<usize> = None;
+        let mut move_down: Option<usize> = None;
+        let order = self.settings.panel_order.clone();
+        let last = order.len().saturating_sub(1);
+        for (i, panel) in order.iter().copied().enumerate() {
+            ui.horizontal(|ui| {
+                let mut on = self.settings.is_panel_enabled(panel);
+                if ui.checkbox(&mut on, panel.label()).changed() {
+                    self.settings.set_panel_enabled(panel, on);
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if triangle_button(ui, false, i < last)
+                        .on_hover_text("Move down")
+                        .clicked()
+                    {
+                        move_down = Some(i);
+                    }
+                    if triangle_button(ui, true, i > 0)
+                        .on_hover_text("Move up")
+                        .clicked()
+                    {
+                        move_up = Some(i);
+                    }
+                });
+            });
+            // A panel's fields are configured under it, greyed out when the
+            // panel itself is off.
+            let enabled = self.settings.is_panel_enabled(panel);
+            self.panel_field_toggles(ui, panel, enabled);
+        }
+        if let Some(i) = move_up {
+            self.settings.move_up(i);
+        }
+        if let Some(i) = move_down {
+            self.settings.move_down(i);
+        }
+
+        ui.add_space(8.0);
+        ui.separator();
+        ui.add_space(8.0);
+
+        // Copy behaviour, with a live preview of a sample hex value.
+        ui.label(egui::RichText::new("COPY").weak().small());
+        ui.add_space(2.0);
+        ui.checkbox(
+            &mut self.settings.copy.prepend_prefix,
+            "Prepend base prefix",
+        );
+        ui.checkbox(
+            &mut self.settings.copy.keep_leading_zeros,
+            "Keep leading zeros",
+        );
+        ui.checkbox(
+            &mut self.settings.copy.keep_separators,
+            "Keep group separators",
+        );
+        let preview = self.settings.copy.apply("HEX", "00DE_AD00");
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Preview").weak().small());
+            ui.monospace(egui::RichText::new(preview).color(theme::accent(ui.ctx())));
+        });
+    }
+
     /// Draw the auto-dismissing toast and clear it once expired.
     fn toast(&mut self, ctx: &egui::Context) {
         let now = ctx.input(|i| i.time);
@@ -1437,6 +1655,9 @@ impl eframe::App for App {
                             if let Some(mode) = theme_icon_toggle(ui, self.theme_mode) {
                                 self.theme_mode = mode;
                             }
+                            if settings_icon_button(ui).clicked() {
+                                self.settings_open = !self.settings_open;
+                            }
                             // Cycle: Compact → Full → Custom (if exists) → Compact
                             let view_label = self.view_mode.label();
                             if ui
@@ -1503,8 +1724,9 @@ impl eframe::App for App {
                 Self::section(ui, |ui| self.expression_centerpiece(ui));
 
                 // Below it: two columns when there's room, collapsing to a
-                // single stack when the window is narrow. Stacked order matches
-                // column order: Current value → Bits → Format → History.
+                // single stack when the window is narrow. Panels render in the
+                // user-configured order; the two-column split keeps that order
+                // while balancing the columns by rough height.
                 let two_col =
                     self.view_mode != ViewMode::Compact && ui.available_width() >= 720.0;
                 // `PC_DEBUG=1` dumps the layout decision (and the bit grid dumps
@@ -1521,32 +1743,26 @@ impl eframe::App for App {
                         (ui.available_width() - ui.spacing().item_spacing.x) / 2.0,
                     );
                 }
-                // The bit grid edits the integer value, so it is hidden in
-                // float mode (where the value is an f64, not width-bound bits).
-                let show_bits = !self.is_float_mode();
+                let visible = self.visible_panels();
                 if two_col {
+                    let (left, right) = Self::balance_columns(&visible);
                     ui.columns(2, |cols| {
-                        Self::section(&mut cols[0], |ui| self.current_value_compact(ui));
-                        if show_bits {
-                            Self::section(&mut cols[0], |ui| self.bits_section(ui));
+                        for &p in &left {
+                            Self::section(&mut cols[0], |ui| self.render_panel(ui, p));
                         }
-
-                        Self::section(&mut cols[1], |ui| self.format_section(ui));
-                        Self::section(&mut cols[1], |ui| self.interpret_section(ui));
-                        Self::section(&mut cols[1], |ui| self.history_panel(ui));
+                        for &p in &right {
+                            Self::section(&mut cols[1], |ui| self.render_panel(ui, p));
+                        }
                     });
                 } else {
-                    Self::section(ui, |ui| self.current_value_compact(ui));
-                    if show_bits {
-                        Self::section(ui, |ui| self.bits_section(ui));
+                    for p in visible {
+                        Self::section(ui, |ui| self.render_panel(ui, p));
                     }
-                    Self::section(ui, |ui| self.format_section(ui));
-                    Self::section(ui, |ui| self.interpret_section(ui));
-                    Self::section(ui, |ui| self.history_panel(ui));
                 }
             });
         });
 
+        self.settings_window(ui.ctx());
         self.toast(ui.ctx());
     }
 
@@ -1568,6 +1784,7 @@ impl eframe::App for App {
             storage.set_string("custom_w", sz.x.to_string());
             storage.set_string("custom_h", sz.y.to_string());
         }
+        self.settings.save(storage);
     }
 }
 
@@ -1581,18 +1798,6 @@ fn field_label(field: Field) -> &'static str {
         Field::Bin => "BIN",
         Field::Oct => "OCT",
         Field::Fixed => "FIX",
-    }
-}
-
-/// Clipboard form of a base rendering: group underscores stripped and a base
-/// prefix prepended — `0x`/`0b`/`0o` for HEX/BIN/OCT, none for DEC.
-fn clipboard_form(label: &str, display: &str) -> String {
-    let bare: String = display.chars().filter(|&c| c != '_').collect();
-    match label {
-        "HEX" => format!("0x{bare}"),
-        "BIN" => format!("0b{bare}"),
-        "OCT" => format!("0o{bare}"),
-        _ => bare, // DEC (and any non-base label) copied bare
     }
 }
 
@@ -1663,6 +1868,102 @@ fn send_icon_button(ui: &mut egui::Ui) -> egui::Response {
     }
 
     resp.on_hover_text("Send to expression")
+}
+
+/// Gear icon button that opens the settings modal. Drawn in Rust (a ring with
+/// radial teeth and a hub) so it needs no glyph font, matching the other icons.
+fn settings_icon_button(ui: &mut egui::Ui) -> egui::Response {
+    let size = ui.spacing().interact_size.y;
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::click());
+    if !ui.is_rect_visible(rect) {
+        return resp;
+    }
+
+    let vis = ui.style().interact(&resp);
+    let bg = vis.weak_bg_fill;
+    let col = vis.fg_stroke.color;
+    ui.painter()
+        .rect_filled(rect, egui::CornerRadius::same(6), bg);
+
+    let c = rect.center();
+    let stroke = egui::Stroke::new(1.4, col);
+    let r = 4.2_f32;
+    // Eight teeth radiating from the ring.
+    for i in 0..8 {
+        let a = i as f32 * std::f32::consts::TAU / 8.0;
+        let (sin, cos) = a.sin_cos();
+        ui.painter().line_segment(
+            [
+                egui::pos2(c.x + cos * r, c.y + sin * r),
+                egui::pos2(c.x + cos * (r + 2.0), c.y + sin * (r + 2.0)),
+            ],
+            stroke,
+        );
+    }
+    ui.painter().circle_stroke(c, r, stroke);
+    ui.painter().circle_filled(c, 1.6, col);
+
+    resp.on_hover_text("Settings")
+}
+
+/// Small close (✕) button drawn as two strokes, no font dependency.
+fn close_icon_button(ui: &mut egui::Ui) -> egui::Response {
+    let h = ui.spacing().interact_size.y;
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(h, h), egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let col = ui.style().interact(&resp).fg_stroke.color;
+        let stroke = egui::Stroke::new(1.4, col);
+        let c = rect.center();
+        let r = 4.0;
+        ui.painter().line_segment(
+            [egui::pos2(c.x - r, c.y - r), egui::pos2(c.x + r, c.y + r)],
+            stroke,
+        );
+        ui.painter().line_segment(
+            [egui::pos2(c.x - r, c.y + r), egui::pos2(c.x + r, c.y - r)],
+            stroke,
+        );
+    }
+    resp.on_hover_text("Close")
+}
+
+/// Small up/down reorder button drawn as a filled triangle (JetBrains Mono has
+/// no arrow glyphs, so we paint it). When `enabled` is false it renders greyed
+/// and ignores clicks.
+fn triangle_button(ui: &mut egui::Ui, up: bool, enabled: bool) -> egui::Response {
+    let h = ui.spacing().interact_size.y;
+    let w = h * 0.7;
+    let sense = if enabled {
+        egui::Sense::click()
+    } else {
+        egui::Sense::hover()
+    };
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, h), sense);
+    if ui.is_rect_visible(rect) {
+        let col = if enabled {
+            ui.style().interact(&resp).fg_stroke.color
+        } else {
+            ui.visuals().weak_text_color()
+        };
+        let c = rect.center();
+        let r = 4.0;
+        let pts = if up {
+            vec![
+                egui::pos2(c.x, c.y - r),
+                egui::pos2(c.x - r, c.y + r),
+                egui::pos2(c.x + r, c.y + r),
+            ]
+        } else {
+            vec![
+                egui::pos2(c.x, c.y + r),
+                egui::pos2(c.x - r, c.y - r),
+                egui::pos2(c.x + r, c.y - r),
+            ]
+        };
+        ui.painter()
+            .add(egui::Shape::convex_polygon(pts, col, egui::Stroke::NONE));
+    }
+    resp
 }
 
 /// Single icon button showing the current theme; cycles on click.
@@ -1748,10 +2049,11 @@ fn value_lines(
     value: Value,
     sign: Signedness,
     base: HistoryBase,
+    copy: CopyOptions,
 ) -> Option<&'static str> {
     let mut copied = None;
     let mut line = |ui: &mut egui::Ui, label: &'static str, text: String| {
-        if value_line(ui, label, text) {
+        if value_line(ui, label, text, copy) {
             copied = Some(label);
         }
     };
@@ -1772,11 +2074,16 @@ fn value_lines(
 
 /// Render a float result: the full-precision decimal plus, for the bit bases,
 /// its f64 IEEE-754 pattern. Mirrors [`value_lines`] for float history entries.
-fn float_value_lines(ui: &mut egui::Ui, x: f64, base: HistoryBase) -> Option<&'static str> {
+fn float_value_lines(
+    ui: &mut egui::Ui,
+    x: f64,
+    base: HistoryBase,
+    copy: CopyOptions,
+) -> Option<&'static str> {
     let bits = f64_to_value(x);
     let mut copied = None;
     let mut line = |ui: &mut egui::Ui, label: &'static str, text: String| {
-        if value_line(ui, label, text) {
+        if value_line(ui, label, text, copy) {
             copied = Some(label);
         }
     };
@@ -1797,7 +2104,7 @@ fn float_value_lines(ui: &mut egui::Ui, x: f64, base: HistoryBase) -> Option<&'s
 
 /// One labelled, monospace, click-to-copy value line. Copies on click and
 /// returns whether it was clicked (so the caller can show a toast).
-fn value_line(ui: &mut egui::Ui, label: &str, text: String) -> bool {
+fn value_line(ui: &mut egui::Ui, label: &str, text: String, copy: CopyOptions) -> bool {
     let mut clicked = false;
     ui.horizontal(|ui| {
         ui.add_sized(
@@ -1812,7 +2119,7 @@ fn value_line(ui: &mut egui::Ui, label: &str, text: String) -> bool {
             )
             .on_hover_text("Click to copy");
         if resp.clicked() {
-            ui.ctx().copy_text(clipboard_form(label, &text));
+            ui.ctx().copy_text(copy.apply(label, &text));
             clicked = true;
         }
     });
