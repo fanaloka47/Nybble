@@ -1457,7 +1457,9 @@ impl App {
         // narrow, so the content pane keeps room in Compact mode.
         let text_nav = avail.width() >= 560.0;
         let nav_w = if text_nav { 104.0 } else { 40.0 };
-        let win_w = (avail.width() - 24.0).clamp(300.0, 620.0);
+        // Fill ~90% of the window width so there's always a margin to the edges,
+        // capped so it doesn't get unwieldy on a very wide window.
+        let win_w = (avail.width() * 0.9).clamp(300.0, 620.0);
         let max_h = (avail.height() - 32.0).clamp(240.0, 600.0);
         let content_w = (win_w - nav_w - 30.0).max(180.0);
         let scroll_h = (max_h - 60.0).max(140.0);
