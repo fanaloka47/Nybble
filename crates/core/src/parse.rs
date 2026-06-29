@@ -89,7 +89,7 @@ fn strip_radix_prefix(s: &str, radix: u32) -> &str {
 pub fn parse_base(text: &str, radix: u32, width: Width, sign: Signedness) -> Result<Value, String> {
     let cleaned: String = text
         .chars()
-        .filter(|c| !c.is_whitespace() && *c != '_')
+        .filter(|c| !c.is_whitespace() && *c != '_' && *c != '\'')
         .collect();
     if cleaned.is_empty() {
         return Ok(Value::new(0, width));

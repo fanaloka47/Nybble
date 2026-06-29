@@ -554,7 +554,7 @@ impl App {
             Field::Hex => format!("0x{}", self.hex),
             Field::Bin => format!("0b{}", self.bin),
             Field::Oct => format!("0o{}", self.oct),
-            Field::Dec => self.dec.clone(),
+            Field::Dec => self.dec.replace('\'', ""),
             Field::Fixed => unreachable!("fixed field is not a base field"),
         }
     }
@@ -1048,7 +1048,7 @@ mod tests {
         app.value = Value::new(0xDEAD_BEEF, w(32));
         app.refresh(None);
         assert_eq!(app.hex, "DEAD_BEEF");
-        assert_eq!(app.dec, "3735928559");
+        assert_eq!(app.dec, "3'735'928'559");
         assert!(!app.bin.is_empty());
         assert!(!app.oct.is_empty());
     }
@@ -1174,7 +1174,7 @@ mod tests {
         app.on_field_edit(Field::Hex);
         assert_eq!(app.value.raw(), 0xDEAD_BEEF);
         assert!(app.status.is_none());
-        assert_eq!(app.dec, "3735928559");
+        assert_eq!(app.dec, "3'735'928'559");
     }
 
     #[test]

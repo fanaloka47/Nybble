@@ -125,10 +125,11 @@ impl CopyOptions {
         };
 
         // Separators are presentation-only; drop them unless asked to keep.
+        // HEX/BIN/OCT use '_'; DEC uses '\'' as thousands separator.
         let mut body: String = if self.keep_separators {
             display.to_owned()
         } else {
-            display.chars().filter(|&c| c != '_').collect()
+            display.chars().filter(|&c| c != '_' && c != '\'').collect()
         };
 
         // Leading zeros only ever appear in the padded bit bases. DEC is never

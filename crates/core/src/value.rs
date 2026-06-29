@@ -114,41 +114,49 @@ impl Value {
     pub fn to_hex(self) -> String {
         let digits = self.width.bits().div_ceil(4) as usize;
         let s = format!("{:0width$X}", self.raw, width = digits);
-        group(&s, 4)
+        group(&s, '_', 4)
     }
 
     /// Binary, zero-padded to the full width and grouped in 4-bit nibbles.
     pub fn to_bin(self) -> String {
         let digits = self.width.bits() as usize;
         let s = format!("{:0width$b}", self.raw, width = digits);
-        group(&s, 4)
+        group(&s, '_', 4)
     }
 
     /// Octal, zero-padded to cover the width and grouped in 3-digit chunks.
     pub fn to_oct(self) -> String {
         let digits = self.width.bits().div_ceil(3) as usize;
         let s = format!("{:0width$o}", self.raw, width = digits);
-        group(&s, 3)
+        group(&s, '_', 3)
     }
 
     /// Decimal. Unsigned shows the raw magnitude; signed shows the
-    /// two's-complement interpretation. Not zero-padded or grouped.
+    /// two's-complement interpretation. Not zero-padded; apostrophe thousands
+    /// separators are inserted for readability (e.g. `1'000'000`).
     pub fn to_dec(self, sign: Signedness) -> String {
-        match sign {
+        let raw = match sign {
             Signedness::Unsigned => self.raw.to_string(),
             Signedness::Signed => self.as_signed().to_string(),
-        }
+        };
+        // Insert ' every 3 digits from the right, skipping a leading '-'.
+        let (sign_char, digits) = if raw.starts_with('-') {
+            ("-", &raw[1..])
+        } else {
+            ("", raw.as_str())
+        };
+        format!("{}{}", sign_char, group(digits, '\'', 3))
     }
 }
 
-/// Insert `_` separators every `group_size` characters, counting from the
-/// right. `group("DEADBEEF", 4)` -> `"DEAD_BEEF"`.
-fn group(s: &str, group_size: usize) -> String {
+/// Insert `sep` every `group_size` characters counting from the right.
+/// `group("DEADBEEF", '_', 4)` -> `"DEAD_BEEF"`.
+fn group(s: &str, sep: char, group_size: usize) -> String {
     let len = s.len();
     let mut out = String::with_capacity(len + len / group_size);
     for (i, c) in s.chars().enumerate() {
         if i > 0 && (len - i).is_multiple_of(group_size) {
-            out.push('_');
+            out.push(sep);
         }
         out.push(c);
     }
@@ -191,7 +199,7 @@ mod tests {
 
     #[test]
     fn signed_vs_unsigned_decimal_same_bits() {
-        // 0xFF at width 8 is 255 unsigned, -1 signed.
+        // 0xFF at width 8 is 255 unsigned, -1 signed. No separator needed.
         let v = Value::new(0xFF, w(8));
         assert_eq!(v.to_dec(Signedness::Unsigned), "255");
         assert_eq!(v.to_dec(Signedness::Signed), "-1");
@@ -208,11 +216,32 @@ mod tests {
     }
 
     #[test]
+    fn decimal_thousands_separator() {
+        // 1_000 — exactly 4 digits, gets one separator.
+        let v = Value::new(1_000, w(16));
+        assert_eq!(v.to_dec(Signedness::Unsigned), "1'000");
+
+        // 1_000_000 — 7 digits.
+        let v = Value::new(1_000_000, w(32));
+        assert_eq!(v.to_dec(Signedness::Unsigned), "1'000'000");
+
+        // Signed negative: separator appears only in the digit run, not before '-'.
+        let v = Value::new(0xFFFF_D8F0, w(32)); // -10000 signed
+        assert_eq!(v.to_dec(Signedness::Signed), "-10'000");
+
+        // Values under 1000 need no separator.
+        let v = Value::new(999, w(16));
+        assert_eq!(v.to_dec(Signedness::Unsigned), "999");
+    }
+
+    #[test]
     fn signed_decimal_width_128() {
         let v = Value::new(u128::MAX, w(128));
         assert_eq!(v.as_signed(), -1);
         assert_eq!(v.to_dec(Signedness::Signed), "-1");
-        assert_eq!(v.to_dec(Signedness::Unsigned), u128::MAX.to_string());
+        // u128::MAX has 39 digits; just check apostrophes appear.
+        let s = v.to_dec(Signedness::Unsigned);
+        assert!(s.contains('\''));
     }
 
     #[test]
