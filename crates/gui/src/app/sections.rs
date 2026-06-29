@@ -211,6 +211,7 @@ impl App {
         let item_fill = ui.visuals().faint_bg_color;
         let mut recall_idx: Option<usize> = None;
         let mut copied: Option<&'static str> = None;
+        let mut send_expr: Option<String> = None;
 
         // Size the list to about five entries, then scroll for the rest. An
         // entry's height depends on how many value lines the current base filter
@@ -246,24 +247,33 @@ impl App {
                             .corner_radius(egui::CornerRadius::same(8))
                             .show(ui, |ui| {
                                 ui.set_width(ui.available_width());
-                                let expr = ui.add(
-                                    egui::Label::new(
-                                        egui::RichText::new(&entry.expr).monospace().color(accent),
-                                    )
-                                    .sense(egui::Sense::click()),
-                                );
-                                if expr.clicked() {
+                                let mut recalled = false;
+                                ui.horizontal(|ui| {
+                                    recalled |= ui
+                                        .add(
+                                            egui::Label::new(
+                                                egui::RichText::new(&entry.expr)
+                                                    .monospace()
+                                                    .color(accent),
+                                            )
+                                            .truncate()
+                                            .sense(egui::Sense::click()),
+                                        )
+                                        .clicked();
+                                    recalled |= widgets::send_icon_button(ui).clicked();
+                                });
+                                if recalled {
                                     recall_idx = Some(i);
                                 }
-                                expr.on_hover_text("Click to recall this expression");
-                                let line_copied = match entry.result {
+                                match match entry.result {
                                     HistoryResult::Integer { value, sign } => {
                                         value_lines(ui, value, sign, base, copy)
                                     }
                                     HistoryResult::Float(x) => float_value_lines(ui, x, base, copy),
-                                };
-                                if let Some(label) = line_copied {
-                                    copied = Some(label);
+                                } {
+                                    Some(LineAction::Copied(label)) => copied = Some(label),
+                                    Some(LineAction::Sent(text)) => send_expr = Some(text),
+                                    None => {}
                                 }
                             });
                         ui.add_space(6.0);
@@ -274,6 +284,15 @@ impl App {
         if let Some(i) = recall_idx {
             let entry = self.history[i].clone();
             self.recall(entry);
+            self.status = Some("Sent to expression".into());
+            self.status_until = ui.ctx().input(|i| i.time) + 1.4;
+        }
+        if let Some(text) = send_expr {
+            self.expr = text;
+            self.expr_error = None;
+            self.expr_focus_request = true;
+            self.status = Some("Sent to expression".into());
+            self.status_until = ui.ctx().input(|i| i.time) + 1.4;
         }
         if let Some(label) = copied {
             self.status = Some(format!("Copied {label}"));
@@ -1195,19 +1214,23 @@ fn expression_reference(ui: &mut egui::Ui) {
     );
 }
 
+enum LineAction {
+    Copied(&'static str),
+    Sent(String),
+}
+
 /// Render the result `value` in one base or all four, as click-to-copy lines.
-/// Returns the label of a line that was clicked (for the toast), if any.
 fn value_lines(
     ui: &mut egui::Ui,
     value: Value,
     sign: Signedness,
     base: HistoryBase,
     copy: CopyOptions,
-) -> Option<&'static str> {
-    let mut copied = None;
+) -> Option<LineAction> {
+    let mut action = None;
     let mut line = |ui: &mut egui::Ui, label: &'static str, text: String| {
-        if value_line(ui, label, text, copy) {
-            copied = Some(label);
+        if let Some(a) = value_line(ui, label, text, copy) {
+            action = Some(a);
         }
     };
     match base {
@@ -1222,7 +1245,7 @@ fn value_lines(
         HistoryBase::Bin => line(ui, "BIN", value.to_bin()),
         HistoryBase::Oct => line(ui, "OCT", value.to_oct()),
     }
-    copied
+    action
 }
 
 /// Render a float result: the full-precision decimal plus, for the bit bases,
@@ -1232,12 +1255,12 @@ fn float_value_lines(
     x: f64,
     base: HistoryBase,
     copy: CopyOptions,
-) -> Option<&'static str> {
+) -> Option<LineAction> {
     let bits = f64_to_value(x);
-    let mut copied = None;
+    let mut action = None;
     let mut line = |ui: &mut egui::Ui, label: &'static str, text: String| {
-        if value_line(ui, label, text, copy) {
-            copied = Some(label);
+        if let Some(a) = value_line(ui, label, text, copy) {
+            action = Some(a);
         }
     };
     match base {
@@ -1252,29 +1275,47 @@ fn float_value_lines(
         HistoryBase::Bin => line(ui, "BIN", bits.to_bin()),
         HistoryBase::Oct => line(ui, "OCT", bits.to_oct()),
     }
-    copied
+    action
 }
 
-/// One labelled, monospace, click-to-copy value line. Copies on click and
-/// returns whether it was clicked (so the caller can show a toast).
-fn value_line(ui: &mut egui::Ui, label: &str, text: String, copy: CopyOptions) -> bool {
-    let mut clicked = false;
+/// One labelled value line with copy and send-to-expression icons.
+fn value_line(
+    ui: &mut egui::Ui,
+    label: &'static str,
+    text: String,
+    copy: CopyOptions,
+) -> Option<LineAction> {
+    let mut action = None;
     ui.horizontal(|ui| {
+        let h = ui.spacing().interact_size.y;
         ui.add_sized(
-            [34.0, ui.spacing().interact_size.y],
+            [34.0, h],
             egui::Label::new(egui::RichText::new(label).weak().monospace().small()),
         );
-        let resp = ui
-            .add(
-                egui::Label::new(egui::RichText::new(&text).monospace())
-                    .truncate()
-                    .sense(egui::Sense::click()),
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if widgets::copy_icon_button(ui).clicked() {
+                ui.ctx().copy_text(copy.apply(label, &text));
+                action = Some(LineAction::Copied(label));
+            }
+            if widgets::send_icon_button(ui).clicked() {
+                action = Some(LineAction::Sent(expr_literal(label, &text)));
+            }
+            ui.add(
+                egui::Label::new(egui::RichText::new(&text).monospace()).truncate(),
             )
-            .on_hover_text("Click to copy");
-        if resp.clicked() {
-            ui.ctx().copy_text(copy.apply(label, &text));
-            clicked = true;
-        }
+            .on_hover_text(&text);
+        });
     });
-    clicked
+    action
+}
+
+/// Format a history value as a literal the expression evaluator can parse.
+fn expr_literal(label: &str, text: &str) -> String {
+    let clean: String = text.chars().filter(|&c| c != '\'').collect();
+    match label {
+        "HEX" => format!("0x{clean}"),
+        "BIN" => format!("0b{clean}"),
+        "OCT" => format!("0o{clean}"),
+        _ => clean,
+    }
 }
