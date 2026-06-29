@@ -55,6 +55,8 @@ Public API re-exported from `lib.rs`: `Value`, `Width`, `Signedness`, `eval`, `E
 
 eframe is pulled with `default-features = false`; only `glow`, `default_fonts`, `persistence`, and `x11` (unix only) are enabled. `wayland` was dropped (crashes under WSL); `accesskit` disabled (needs D-Bus).
 
+**Font constraint — icons and special characters:** The monospace font is JetBrains Mono (`resources/fonts/JetBrainsMono-Regular.ttf`), inserted as the primary `FontFamily::Monospace` in `app/mod.rs`. JetBrains Mono only covers Basic Latin, Latin-1 Supplement, and a small set of box-drawing/arrows. Any character outside that range (Dingbats, Miscellaneous Symbols, emoji, etc.) will not render. Every icon or non-ASCII glyph added to the UI **must** be verified to exist in JetBrains Mono before committing. Prefer plain ASCII for button labels (`x`, `+`, `-`, `?`, `!`) over Unicode symbols when in doubt.
+
 ## Data flow
 
 User input → mutate `Value` via core → `App::refresh()` rewrites text buffers → next frame redraws everything.

@@ -105,6 +105,10 @@ pub fn settings_icon_button(ui: &mut egui::Ui) -> egui::Response {
 
 /// Small close (✕) button drawn as two strokes, no font dependency.
 pub fn close_icon_button(ui: &mut egui::Ui) -> egui::Response {
+    cross_button(ui, "Close")
+}
+
+fn cross_button(ui: &mut egui::Ui, tooltip: &str) -> egui::Response {
     let h = ui.spacing().interact_size.y;
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(h, h), egui::Sense::click());
     if ui.is_rect_visible(rect) {
@@ -121,7 +125,7 @@ pub fn close_icon_button(ui: &mut egui::Ui) -> egui::Response {
             stroke,
         );
     }
-    resp.on_hover_text("Close")
+    resp.on_hover_text(tooltip)
 }
 
 /// Small up/down reorder button drawn as a filled triangle (JetBrains Mono has

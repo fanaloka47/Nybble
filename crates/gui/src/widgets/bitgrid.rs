@@ -28,6 +28,7 @@ pub fn bit_grid(ui: &mut egui::Ui, value: Value, accent: Color32) -> Option<Valu
     }
     let raw = value.raw();
     let mut toggled: Option<u32> = None;
+    let mut cleared = false;
 
     // Header: highest bit index on the left; set count and bit 0 on the right.
     // Kept on a single bounded row so nothing drifts vertically.
@@ -42,6 +43,9 @@ pub fn bit_grid(ui: &mut egui::Ui, value: Value, accent: Color32) -> Option<Valu
                     .small()
                     .color(accent),
             );
+            if popcount > 0 && ui.button("Clear").clicked() {
+                cleared = true;
+            }
         });
     });
     ui.add_space(6.0);
@@ -139,6 +143,9 @@ pub fn bit_grid(ui: &mut egui::Ui, value: Value, accent: Color32) -> Option<Valu
         ui.add_space(6.0);
     }
 
+    if cleared {
+        return Some(value.with_raw(0));
+    }
     toggled.map(|b| value.with_raw(value.raw() ^ (1u128 << b)))
 }
 
