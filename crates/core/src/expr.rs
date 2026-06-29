@@ -413,6 +413,7 @@ pub fn eval(input: &str, width: Width, sign: Signedness, ans: Value) -> Result<V
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::eval_float;
 
     fn w(bits: u32) -> Width {
         Width::new(bits).unwrap()
@@ -556,5 +557,362 @@ mod tests {
         assert!(matches!(eval32("log2(0)"), Err(EvalError::DomainError(_))));
         // a stray comma outside a call is malformed.
         assert_eq!(eval32("1, 2"), Err(EvalError::UnexpectedToken));
+    }
+
+    // --- Bitwise operations -----------------------------------------------
+
+    #[test]
+    fn bitwise_and() {
+        assert_eq!(eval32("0xFF & 0x0F").unwrap(), 0x0F);
+        assert_eq!(eval32("0xAA & 0x55").unwrap(), 0x00);
+        assert_eq!(eval32("0xFFFF & 0xFFFF").unwrap(), 0xFFFF);
+        // AND with zero is zero.
+        assert_eq!(eval32("0x12345678 & 0").unwrap(), 0);
+    }
+
+    #[test]
+    fn bitwise_or() {
+        assert_eq!(eval32("0x0F | 0xF0").unwrap(), 0xFF);
+        assert_eq!(eval32("0xAA | 0x55").unwrap(), 0xFF);
+        // OR with zero is identity.
+        assert_eq!(eval32("0x12345678 | 0").unwrap(), 0x12345678);
+    }
+
+    #[test]
+    fn bitwise_xor() {
+        assert_eq!(eval32("0xFF ^ 0xFF").unwrap(), 0x00);
+        assert_eq!(eval32("0xAA ^ 0x55").unwrap(), 0xFF);
+        assert_eq!(eval32("0x12 ^ 0x34").unwrap(), 0x26);
+        // XOR with zero is identity.
+        assert_eq!(eval32("0x12345678 ^ 0").unwrap(), 0x12345678);
+    }
+
+    #[test]
+    fn bitwise_not() {
+        assert_eq!(eval32("~0x00000000").unwrap(), 0xFFFFFFFF);
+        assert_eq!(eval32("~0xFFFFFFFF").unwrap(), 0x00000000);
+        assert_eq!(eval32("~0x55555555").unwrap(), 0xAAAAAAAA);
+    }
+
+    #[test]
+    fn left_shift() {
+        assert_eq!(eval32("1 << 0").unwrap(), 1);
+        assert_eq!(eval32("1 << 8").unwrap(), 0x100);
+        assert_eq!(eval32("0xFF << 8").unwrap(), 0xFF00);
+        // Shift beyond width wraps to zero.
+        assert_eq!(eval32("1 << 32").unwrap(), 0);
+        assert_eq!(eval32("1 << 40").unwrap(), 0);
+    }
+
+    #[test]
+    fn right_shift_unsigned() {
+        assert_eq!(eval32("0xFF >> 1").unwrap(), 0x7F);
+        assert_eq!(eval32("0x100 >> 8").unwrap(), 0x01);
+        assert_eq!(eval32("0x80000000 >> 1").unwrap(), 0x40000000);
+        // Shift beyond width yields zero.
+        assert_eq!(eval32("1 >> 32").unwrap(), 0);
+    }
+
+    #[test]
+    fn right_shift_signed_extends() {
+        let signed8 =
+            |s: &str| eval(s, w(8), Signedness::Signed, Value::new(0, w(8))).map(|v| v.raw());
+        // 0x80 is -128 signed; right shift fills with 1s.
+        assert_eq!(signed8("0x80 >> 1").unwrap(), 0xC0);
+        assert_eq!(signed8("0x80 >> 2").unwrap(), 0xE0);
+        // 0x40 is positive; right shift fills with 0s.
+        assert_eq!(signed8("0x40 >> 1").unwrap(), 0x20);
+        assert_eq!(signed8("0x40 >> 2").unwrap(), 0x10);
+    }
+
+    #[test]
+    fn arithmetic_add_and_wrap() {
+        assert_eq!(eval32("0 + 0").unwrap(), 0);
+        assert_eq!(eval32("1 + 1").unwrap(), 2);
+        assert_eq!(eval32("0xFFFFFFFF + 1").unwrap(), 0x00000000);
+        assert_eq!(eval32("0x7FFFFFFF + 0x7FFFFFFF").unwrap(), 0xFFFFFFFE);
+    }
+
+    #[test]
+    fn arithmetic_sub_and_wrap() {
+        assert_eq!(eval32("5 - 3").unwrap(), 2);
+        assert_eq!(eval32("0 - 1").unwrap(), 0xFFFFFFFF);
+        assert_eq!(eval32("0x80000000 - 1").unwrap(), 0x7FFFFFFF);
+    }
+
+    #[test]
+    fn arithmetic_mul_and_wrap() {
+        assert_eq!(eval32("3 * 4").unwrap(), 12);
+        assert_eq!(eval32("256 * 256").unwrap(), 0x10000);
+        // 0x80000000 * 2 = 0x100000000, which wraps to 0 at 32-bit width.
+        let r = eval(
+            "0x80000000 * 2",
+            w(32),
+            Signedness::Unsigned,
+            Value::new(0, w(32)),
+        )
+        .unwrap();
+        assert_eq!(r.raw(), 0);
+    }
+
+    #[test]
+    fn arithmetic_div_unsigned() {
+        assert_eq!(eval32("10 / 2").unwrap(), 5);
+        assert_eq!(eval32("10 / 3").unwrap(), 3); // truncates
+        assert_eq!(eval32("1 / 2").unwrap(), 0);  // truncates to zero
+    }
+
+    #[test]
+    fn arithmetic_div_signed() {
+        let signed32 = |s: &str| {
+            eval(
+                s,
+                w(32),
+                Signedness::Signed,
+                Value::new(0, w(32)),
+            )
+            .map(|v| v.raw() as i32)
+        };
+        assert_eq!(signed32("10 / 2").unwrap(), 5);
+        assert_eq!(signed32("-10 / 2").unwrap(), -5);
+        assert_eq!(signed32("10 / -2").unwrap(), -5);
+        assert_eq!(signed32("-10 / -2").unwrap(), 5);
+    }
+
+    #[test]
+    fn arithmetic_rem_unsigned() {
+        assert_eq!(eval32("17 % 5").unwrap(), 2);
+        assert_eq!(eval32("10 % 3").unwrap(), 1);
+        assert_eq!(eval32("5 % 10").unwrap(), 5);
+    }
+
+    #[test]
+    fn arithmetic_rem_signed() {
+        let signed32 = |s: &str| {
+            eval(
+                s,
+                w(32),
+                Signedness::Signed,
+                Value::new(0, w(32)),
+            )
+            .map(|v| v.raw() as i32)
+        };
+        // Remainder follows dividend sign in Rust.
+        assert_eq!(signed32("17 % 5").unwrap(), 2);
+        assert_eq!(signed32("-17 % 5").unwrap(), -2);
+        assert_eq!(signed32("17 % -5").unwrap(), 2);
+        assert_eq!(signed32("-17 % -5").unwrap(), -2);
+    }
+
+    #[test]
+    fn function_sqrt_edge_cases() {
+        assert_eq!(eval32("sqrt(0)").unwrap(), 0);
+        assert_eq!(eval32("sqrt(1)").unwrap(), 1);
+        assert_eq!(eval32("sqrt(4)").unwrap(), 2);
+        assert_eq!(eval32("sqrt(9)").unwrap(), 3);
+        assert_eq!(eval32("sqrt(100)").unwrap(), 10);
+        // sqrt(255) = 15 (15^2 = 225 < 255, 16^2 = 256 > 255)
+        assert_eq!(eval32("sqrt(255)").unwrap(), 15);
+        assert_eq!(eval32("sqrt(256)").unwrap(), 16);
+    }
+
+    #[test]
+    fn function_log2_edge_cases() {
+        assert_eq!(eval32("log2(1)").unwrap(), 0);
+        assert_eq!(eval32("log2(2)").unwrap(), 1);
+        assert_eq!(eval32("log2(4)").unwrap(), 2);
+        assert_eq!(eval32("log2(8)").unwrap(), 3);
+        assert_eq!(eval32("log2(1024)").unwrap(), 10);
+        // log2(1023) = 9 (2^9 = 512 < 1023 < 1024 = 2^10)
+        assert_eq!(eval32("log2(1023)").unwrap(), 9);
+        assert_eq!(eval32("log2(1025)").unwrap(), 10);
+    }
+
+    #[test]
+    fn function_clog2_edge_cases() {
+        // clog2(n) = ceil(log2(n)), or the bit position of the MSB + 1.
+        assert_eq!(eval32("clog2(0)").unwrap(), 0);
+        assert_eq!(eval32("clog2(1)").unwrap(), 0); // needs 0 bits
+        assert_eq!(eval32("clog2(2)").unwrap(), 1);
+        assert_eq!(eval32("clog2(3)").unwrap(), 2);
+        assert_eq!(eval32("clog2(4)").unwrap(), 2);
+        assert_eq!(eval32("clog2(5)").unwrap(), 3);
+        assert_eq!(eval32("clog2(1024)").unwrap(), 10);
+        assert_eq!(eval32("clog2(1000)").unwrap(), 10);
+        assert_eq!(eval32("clog2(1025)").unwrap(), 11);
+    }
+
+    #[test]
+    fn function_popcount() {
+        assert_eq!(eval32("popcount(0)").unwrap(), 0);
+        assert_eq!(eval32("popcount(1)").unwrap(), 1);
+        assert_eq!(eval32("popcount(3)").unwrap(), 2);
+        assert_eq!(eval32("popcount(0x0F)").unwrap(), 4);
+        assert_eq!(eval32("popcount(0xFF)").unwrap(), 8);
+        assert_eq!(eval32("popcount(0xFFFF)").unwrap(), 16);
+        assert_eq!(eval32("popcount(0xFFFFFFFF)").unwrap(), 32);
+    }
+
+    #[test]
+    fn function_gcd() {
+        assert_eq!(eval32("gcd(0, 5)").unwrap(), 5);
+        assert_eq!(eval32("gcd(5, 0)").unwrap(), 5);
+        assert_eq!(eval32("gcd(12, 8)").unwrap(), 4);
+        assert_eq!(eval32("gcd(54, 24)").unwrap(), 6);
+        assert_eq!(eval32("gcd(17, 19)").unwrap(), 1);
+        assert_eq!(eval32("gcd(100, 50)").unwrap(), 50);
+    }
+
+    #[test]
+    fn function_lcm() {
+        assert_eq!(eval32("lcm(0, 5)").unwrap(), 0);
+        assert_eq!(eval32("lcm(4, 6)").unwrap(), 12);
+        assert_eq!(eval32("lcm(12, 8)").unwrap(), 24);
+        assert_eq!(eval32("lcm(7, 11)").unwrap(), 77);
+    }
+
+    #[test]
+    fn function_min_max() {
+        assert_eq!(eval32("min(3, 9)").unwrap(), 3);
+        assert_eq!(eval32("min(9, 3)").unwrap(), 3);
+        assert_eq!(eval32("max(3, 9)").unwrap(), 9);
+        assert_eq!(eval32("max(9, 3)").unwrap(), 9);
+        assert_eq!(eval32("min(0, 0)").unwrap(), 0);
+        assert_eq!(eval32("max(0, 0)").unwrap(), 0);
+    }
+
+    #[test]
+    fn function_factorial() {
+        assert_eq!(eval32("fact(0)").unwrap(), 1);
+        assert_eq!(eval32("fact(1)").unwrap(), 1);
+        assert_eq!(eval32("fact(2)").unwrap(), 2);
+        assert_eq!(eval32("fact(3)").unwrap(), 6);
+        assert_eq!(eval32("fact(5)").unwrap(), 120);
+        assert_eq!(eval32("fact(10)").unwrap(), 3628800);
+    }
+
+    #[test]
+    fn function_pow() {
+        assert_eq!(eval32("pow(2, 0)").unwrap(), 1);
+        assert_eq!(eval32("pow(2, 1)").unwrap(), 2);
+        assert_eq!(eval32("pow(2, 8)").unwrap(), 256);
+        assert_eq!(eval32("pow(3, 3)").unwrap(), 27);
+        assert_eq!(eval32("pow(10, 3)").unwrap(), 1000);
+        // pow with negative exponent (in u32 mode) wraps.
+        assert_eq!(eval32("pow(2, -1)").unwrap(), 0);
+    }
+
+    #[test]
+    fn function_abs() {
+        let signed32 = |s: &str| {
+            eval(
+                s,
+                w(32),
+                Signedness::Signed,
+                Value::new(0, w(32)),
+            )
+            .map(|v| v.raw())
+        };
+        assert_eq!(signed32("abs(0)").unwrap(), 0);
+        assert_eq!(signed32("abs(42)").unwrap(), 42);
+        assert_eq!(signed32("abs(-42)").unwrap(), 42);
+        // abs of minimum i32 (-2147483648) wraps to itself in two's complement.
+        assert_eq!(signed32("abs(-2147483648)").unwrap(), 0x80000000);
+    }
+
+    #[test]
+    fn function_sign() {
+        let signed32 = |s: &str| {
+            eval(
+                s,
+                w(32),
+                Signedness::Signed,
+                Value::new(0, w(32)),
+            )
+            .map(|v| v.raw() as i32)
+        };
+        assert_eq!(signed32("sign(0)").unwrap(), 0);
+        assert_eq!(signed32("sign(42)").unwrap(), 1);
+        assert_eq!(signed32("sign(-42)").unwrap(), -1);
+    }
+
+    // --- Operator combinations -------------------------------------------
+
+    #[test]
+    fn mixed_bitwise_arithmetic() {
+        // (1 | 2) * 4 = 3 * 4 = 12
+        assert_eq!(eval32("(1 | 2) * 4").unwrap(), 12);
+        // 0xFF & (1 << 3) = 0x08
+        assert_eq!(eval32("0xFF & (1 << 3)").unwrap(), 0x08);
+        // 10 + 5 << 1 = 15 << 1 = 30 (shift binds looser than +)
+        assert_eq!(eval32("10 + 5 << 1").unwrap(), 30);
+    }
+
+    #[test]
+    fn complex_precedence_chain() {
+        // 2 + 3 * 4 - 5 << 1 = 2 + 12 - 5 << 1 = 9 << 1 = 18
+        assert_eq!(eval32("2 + 3 * 4 - 5 << 1").unwrap(), 18);
+        // (0xFF & 0x0F) | (1 << 4) = 0x0F | 0x10 = 0x1F
+        assert_eq!(eval32("(0xFF & 0x0F) | (1 << 4)").unwrap(), 0x1F);
+    }
+
+    #[test]
+    fn functions_in_expressions() {
+        // sqrt(256) * 2 = 16 * 2 = 32
+        assert_eq!(eval32("sqrt(256) * 2").unwrap(), 32);
+        // log2(1024) + log2(2) = 10 + 1 = 11
+        assert_eq!(eval32("log2(1024) + log2(2)").unwrap(), 11);
+        // popcount(0xFF) * 2 = 8 * 2 = 16
+        assert_eq!(eval32("popcount(0xFF) * 2").unwrap(), 16);
+        // gcd(54, 24) + gcd(12, 8) = 6 + 4 = 10
+        assert_eq!(eval32("gcd(54, 24) + gcd(12, 8)").unwrap(), 10);
+    }
+
+    #[test]
+    fn nested_function_calls() {
+        // sqrt(pow(2, 8)) = sqrt(256) = 16
+        assert_eq!(eval32("sqrt(pow(2, 8))").unwrap(), 16);
+        // log2(pow(2, 10)) = 10
+        assert_eq!(eval32("log2(pow(2, 10))").unwrap(), 10);
+        // min(gcd(54, 24), gcd(12, 8)) = min(6, 4) = 4
+        assert_eq!(eval32("min(gcd(54, 24), gcd(12, 8))").unwrap(), 4);
+    }
+
+    #[test]
+    fn functions_with_expressions() {
+        // sqrt(100 + 156) = sqrt(256) = 16
+        assert_eq!(eval32("sqrt(100 + 156)").unwrap(), 16);
+        // popcount(0xAA | 0x55) = popcount(0xFF) = 8
+        assert_eq!(eval32("popcount(0xAA | 0x55)").unwrap(), 8);
+        // gcd(10 * 5, 20 / 2) = gcd(50, 10) = 10
+        assert_eq!(eval32("gcd(10 * 5, 20 / 2)").unwrap(), 10);
+    }
+
+    #[test]
+    fn power_right_associativity() {
+        // 2 ** 3 ** 2 = 2 ** 9 = 512 (not (2**3)**2 = 64)
+        assert_eq!(eval32("2 ** 3 ** 2").unwrap(), 512);
+        // 2 ** 2 ** 3 = 2 ** 8 = 256
+        assert_eq!(eval32("2 ** 2 ** 3").unwrap(), 256);
+    }
+
+    #[test]
+    fn floatmode_bitwise_rejected() {
+        assert!(matches!(
+            eval_float("0xFF & 0x0F", 0.0),
+            Err(EvalError::BitwiseInFloatMode('&'))
+        ));
+        assert!(matches!(
+            eval_float("1 | 2", 0.0),
+            Err(EvalError::BitwiseInFloatMode('|'))
+        ));
+        assert!(matches!(
+            eval_float("~0xFF", 0.0),
+            Err(EvalError::BitwiseInFloatMode('~'))
+        ));
+        assert!(matches!(
+            eval_float("1 << 2", 0.0),
+            Err(EvalError::BitwiseInFloatMode('<'))
+        ));
     }
 }
