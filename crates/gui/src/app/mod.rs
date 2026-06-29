@@ -12,6 +12,7 @@ use crate::settings::Settings;
 use crate::theme::{self, ThemeMode};
 use crate::widgets;
 
+mod layout;
 mod sections;
 
 enum UpdateMsg {

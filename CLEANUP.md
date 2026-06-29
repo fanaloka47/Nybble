@@ -77,9 +77,12 @@ slip in silently.
     (`app.rs:456`), `recall` (`app.rs:689`), `on_field_edit` round-trips. These need no
     egui context — they're pure state transitions on `App` fields.
   - Commit: `Add characterization tests for App state transitions`
-- [ ] **4b. Split `app.rs` (2611 lines) along section boundaries.**
+- [x] **4b. Split `app.rs` (2611 lines) along section boundaries.**
   - e.g. `app/state.rs` (struct + new/save), `app/sections.rs` (panel render fns),
     `app/layout.rs` (column balancing, resize detection). Incremental, one move per commit.
+  - `app/sections.rs`: all UI panel rendering methods + drawing helpers (~1350 lines)
+  - `app/layout.rs`: `panel_visible`, `visible_panels`, `balance_columns`
+  - `app/mod.rs`: types, struct, state machine, eframe impl, tests (~680 lines)
 - [ ] **4c. (Optional) Dedupe the `expr.rs` / `float.rs` tokenizers.**
   - ~300 lines of near-parallel tokenizer + Pratt loop. A shared generic tokenizer
     is possible but couples two intentionally-separate evaluators — only if the
