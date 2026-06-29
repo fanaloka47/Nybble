@@ -98,28 +98,10 @@ impl App {
         // Hint and tooltip advertise the named functions, tailored to the mode:
         // float mode has the full scientific set, integer mode a width-masked
         // subset. The numeric logic itself lives entirely in `nybble-core`.
-        let (hint, fn_help) = if self.is_float_mode() {
-            (
-                "sqrt(2) · sin(pi/2) · 2**8",
-                "Float-mode functions:\n\
-                 trig (rad): sin cos tan asin acos atan · atan2(y,x)\n\
-                 trig (deg): sind cosd tand asind acosd atand\n\
-                 hyperbolic: sinh cosh tanh asinh acosh atanh\n\
-                 logs/exp: ln log2 log10 log(x,base) exp exp2\n\
-                 powers: sqrt cbrt pow(x,y) root(x,n) · x**y\n\
-                 rounding: floor ceil round trunc abs sign\n\
-                 other: hypot min max gcd lcm mod fact\n\
-                 constants: pi e tau",
-            )
+        let hint = if self.is_float_mode() {
+            "sqrt(2) · sin(pi/2) · 2**8"
         } else {
-            (
-                "0xFF & (1 << 3) · log2(4)",
-                "Integer-mode functions (results masked to width):\n\
-                 powers: x**y · pow(x,y) · sqrt · fact\n\
-                 log: log2 clog2 popcount\n\
-                 sign: abs sign\n\
-                 pairs: gcd lcm min max mod",
-            )
+            "0xFF & (1 << 3) · log2(4)"
         };
 
         ui.horizontal(|ui| {
@@ -145,7 +127,7 @@ impl App {
                     .set_char_range(Some(egui::text::CCursorRange::one(end)));
                 out.state.store(ui.ctx(), id);
             }
-            let resp = out.response.response.on_hover_text(fn_help);
+            let resp = out.response.response.on_hover_text("See Settings > Expressions for a full function reference");
             // The box is multiline so long expressions wrap instead of scrolling
             // off-screen, but it still behaves like a single field: Enter submits
             // rather than inserting a newline, so strip any newline back out.
