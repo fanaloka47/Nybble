@@ -536,9 +536,27 @@ impl App {
                     Signedness::Signed => self.value.as_signed() as f64,
                 };
             }
-            // Integer keeps whatever `value` already holds; the float result is
-            // left untouched in `float_value` for when we switch back.
-            NumberMode::Integer => {}
+            // If the float result is a whole number that fits in the current
+            // width, seed the integer value from it so the two modes stay in
+            // sync (symmetric with the Int→Float seeding above).
+            NumberMode::Integer => {
+                let f = self.float_value;
+                if f.is_finite() && f.fract() == 0.0 {
+                    let raw = if f < 0.0 {
+                        (f as i128) as u128
+                    } else {
+                        f as u128
+                    };
+                    let candidate = Value::new(raw, self.width);
+                    let fits = match self.sign {
+                        Signedness::Signed => candidate.as_signed() as f64 == f,
+                        Signedness::Unsigned => candidate.as_unsigned() as f64 == f,
+                    };
+                    if fits {
+                        self.value = candidate;
+                    }
+                }
+            }
         }
         self.number_mode = mode;
         self.expr_error = None;
@@ -1104,6 +1122,36 @@ mod tests {
         app.float_value = 3.14;
         app.set_number_mode(NumberMode::Integer);
         assert!(!app.is_float_mode());
+        assert_eq!(app.value.raw(), 99);
+    }
+
+    #[test]
+    fn set_number_mode_float_to_int_seeds_whole_number() {
+        let mut app = App::for_test();
+        app.set_number_mode(NumberMode::Float);
+        app.float_value = 42.0;
+        app.set_number_mode(NumberMode::Integer);
+        assert_eq!(app.value.as_unsigned(), 42);
+    }
+
+    #[test]
+    fn set_number_mode_float_to_int_seeds_negative_whole_number() {
+        let mut app = App::for_test();
+        app.sign = Signedness::Signed;
+        app.set_number_mode(NumberMode::Float);
+        app.float_value = -7.0;
+        app.set_number_mode(NumberMode::Integer);
+        assert_eq!(app.value.as_signed(), -7);
+    }
+
+    #[test]
+    fn set_number_mode_float_to_int_skips_when_does_not_fit() {
+        let mut app = App::for_test();
+        app.width = w(8);
+        app.value = Value::new(99, w(8));
+        app.set_number_mode(NumberMode::Float);
+        app.float_value = 300.0; // doesn't fit in 8-bit unsigned
+        app.set_number_mode(NumberMode::Integer);
         assert_eq!(app.value.raw(), 99);
     }
 
