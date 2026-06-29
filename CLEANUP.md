@@ -83,12 +83,14 @@ slip in silently.
   - `app/sections.rs`: all UI panel rendering methods + drawing helpers (~1350 lines)
   - `app/layout.rs`: `panel_visible`, `visible_panels`, `balance_columns`
   - `app/mod.rs`: types, struct, state machine, eframe impl, tests (~680 lines)
-- [ ] **4c. (Optional) Dedupe the `expr.rs` / `float.rs` tokenizers.**
-  - ~300 lines of near-parallel tokenizer + Pratt loop. A shared generic tokenizer
-    is possible but couples two intentionally-separate evaluators — only if the
-    maintenance cost is actually biting.
+- [~] **4c. (Optional) Dedupe the `expr.rs` / `float.rs` tokenizers.** — **Declined.**
+  - ~300 lines of near-parallel tokenizer + Pratt loop. The key differences
+    (u128 vs f64 numeric type, bitwise tokens vs hard rejection, float-specific
+    exponent parsing) are fundamental, not incidental. Abstracting them requires
+    generics or a mixed enum that couples two intentionally-separate evaluators.
+    Maintenance cost is not biting; keeping them parallel is the right call.
 
-**Exit:** decide per-item; 4c may be declined.
+**Exit:** 4a–4b complete, 4c declined.
 
 ---
 
