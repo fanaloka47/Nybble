@@ -655,6 +655,7 @@ impl App {
                     self.status = None;
                     self.push_history(trimmed, HistoryResult::Float(x));
                     self.refresh(None);
+                    self.maybe_feed_result_to_expr();
                     return true;
                 }
                 Err(e) => self.expr_error = Some(format!("Invalid expression: {e}")),
@@ -674,12 +675,23 @@ impl App {
                     },
                 );
                 self.refresh(None);
+                self.maybe_feed_result_to_expr();
                 true
             }
             Err(e) => {
                 self.expr_error = Some(format!("Invalid expression: {e}"));
                 false
             }
+        }
+    }
+
+    /// When the "send result to expression" setting is on, replace the field's
+    /// contents with the just-computed result in decimal, so the next
+    /// expression builds on it. Must run after `refresh`, which writes the
+    /// decimal buffer this reads.
+    fn maybe_feed_result_to_expr(&mut self) {
+        if self.settings.result_to_expression {
+            self.expr = self.field_literal(Field::Dec);
         }
     }
 

@@ -783,7 +783,7 @@ impl App {
                             .show(ui, |ui| match self.settings_tab {
                                 SettingsTab::Panels => self.panels_settings(ui),
                                 SettingsTab::Copy => self.copy_settings(ui),
-                                SettingsTab::Expressions => expression_reference(ui),
+                                SettingsTab::Expressions => self.expressions_settings(ui),
                             });
                     });
                 });
@@ -905,6 +905,28 @@ impl App {
         if let Some(i) = move_down {
             self.settings.move_down(i);
         }
+    }
+
+    /// Expressions pane: the evaluation behaviour toggle followed by the static
+    /// grammar/function reference.
+    fn expressions_settings(&mut self, ui: &mut egui::Ui) {
+        ui.label(egui::RichText::new("Behaviour").strong());
+        ui.add_space(6.0);
+        ui.checkbox(
+            &mut self.settings.result_to_expression,
+            "Send result to the expression field",
+        );
+        ui.label(
+            egui::RichText::new(
+                "After evaluating, replace the expression with its result in \
+                 decimal so the next expression builds on it.",
+            )
+            .weak()
+            .small(),
+        );
+        ui.add_space(10.0);
+        ui.separator();
+        expression_reference(ui);
     }
 
     /// Copy pane: clipboard options with a live preview of a sample hex value.

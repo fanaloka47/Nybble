@@ -174,6 +174,11 @@ pub struct Settings {
     pub show_fixed_point: bool,
     pub show_bit_slicer: bool,
 
+    /// After evaluating an expression, replace the field's contents with the
+    /// result rendered in decimal, ready to build the next expression on. Off
+    /// by default — the field normally keeps the typed expression.
+    pub result_to_expression: bool,
+
     pub copy: CopyOptions,
 }
 
@@ -188,6 +193,7 @@ impl Default for Settings {
             show_oct: true,
             show_fixed_point: true,
             show_bit_slicer: true,
+            result_to_expression: false,
             copy: CopyOptions::default(),
         }
     }
@@ -253,6 +259,7 @@ impl Settings {
         s.show_oct = flag("field_oct", true);
         s.show_fixed_point = flag("show_fixed_point", true);
         s.show_bit_slicer = flag("show_bit_slicer", true);
+        s.result_to_expression = flag("result_to_expression", false);
         s.copy.prepend_prefix = flag("copy_prefix", true);
         s.copy.keep_leading_zeros = flag("copy_leading_zeros", true);
         s.copy.keep_separators = flag("copy_separators", false);
@@ -281,6 +288,7 @@ impl Settings {
         put("field_oct", self.show_oct);
         put("show_fixed_point", self.show_fixed_point);
         put("show_bit_slicer", self.show_bit_slicer);
+        put("result_to_expression", self.result_to_expression);
         put("copy_prefix", self.copy.prepend_prefix);
         put("copy_leading_zeros", self.copy.keep_leading_zeros);
         put("copy_separators", self.copy.keep_separators);
