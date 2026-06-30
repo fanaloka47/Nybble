@@ -277,7 +277,7 @@ pub struct App {
     startup_resize_pending: bool,
     /// Last observed `pixels_per_point`. A change means the window moved to a
     /// monitor with a different scale factor; used to suppress the resize
-    /// detector across DPI transitions.
+    /// detector across DPI transitions (see the DPI block in `ui`).
     last_ppp: f32,
 
     // Auto-update
@@ -698,7 +698,6 @@ impl App {
     }
 }
 
-
 /// Clamp a desired logical window size to roughly fit the current monitor.
 ///
 /// Presets are fixed logical sizes; on a small or high-DPI screen (e.g. a 4K
@@ -740,17 +739,23 @@ impl eframe::App for App {
             self.resize_cooldown = 20;
         }
 
-        // Per-monitor DPI scale. On a Windows multi-monitor setup this changes
-        // when the window crosses to a screen with a different scale factor
-        // (e.g. an HD panel at 100% to a 4K panel at 150%). content_rect() is
-        // reported in logical points, so a ppp change makes the size appear to
-        // jump even though the physical window is unchanged — which the resize
-        // detector below would misread as a manual resize and flip to Custom.
-        // Arm the cooldown for a few frames so the DPI transition settles.
+        // Per-monitor DPI scale. The app is Per-Monitor-V2 DPI-aware (see
+        // crates/gui/build.rs), so pixels_per_point changes whenever the window
+        // crosses to a screen with a different scale factor (e.g. a 4K panel at
+        // 125% to an FHD panel at 100%) — letting egui re-render crisply at the
+        // new DPI. The monitor handoff itself is handled by the vendored winit
+        // (which backports the winit#4041 fix, see vendor/winit/NOTICE), so it
+        // no longer ping-pongs.
+        //
+        // content_rect() is reported in logical points, so a ppp change makes
+        // the size appear to jump even though the physical window is unchanged.
+        // Arm the cooldown for a few frames so the resize detector below doesn't
+        // misread that transient as a manual resize and demote the view to
+        // Custom.
         let ppp = ui.ctx().pixels_per_point();
         if (ppp - self.last_ppp).abs() > f32::EPSILON {
             self.last_ppp = ppp;
-            self.resize_cooldown = self.resize_cooldown.max(3);
+            self.resize_cooldown = self.resize_cooldown.max(10);
         }
 
         // Detect manual window resize using content_rect, which is always
@@ -968,7 +973,6 @@ impl eframe::App for App {
     }
 }
 
-
 fn field_radix(field: Field) -> u32 {
     match field {
         Field::Hex => 16,
@@ -978,7 +982,6 @@ fn field_radix(field: Field) -> u32 {
         Field::Fixed => unreachable!(),
     }
 }
-
 
 #[cfg(test)]
 mod tests {
