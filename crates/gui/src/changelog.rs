@@ -14,6 +14,17 @@ pub struct ReleaseNotes {
 /// `crates/gui/Cargo.toml`'s `version` to match — each time you cut a release.
 pub const ENTRIES: &[ReleaseNotes] = &[
     ReleaseNotes {
+        version: "1.2.0",
+        items: &[
+            "Added a setting to send an expression's result back into the input field in decimal, ready to build the next expression on (Settings → Expressions; off by default).",
+            "Added a Clear button to the bit grid header.",
+            "History entries now have buttons to copy the result or send it back to the expression.",
+            "Decimal values now group digits with thousands separators for readability.",
+            "Switching from float to integer mode now keeps the value when the result is a whole number.",
+            "Pressing Enter to evaluate no longer makes the expression field flicker.",
+        ],
+    },
+    ReleaseNotes {
         version: "1.1.0",
         items: &[
             "Added a power operator (**) and named functions (sqrt, log2, clog2, gcd, …) to integer expressions.",
