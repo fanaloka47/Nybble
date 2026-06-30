@@ -317,17 +317,14 @@ impl App {
             .unwrap_or(true);
         let settings = storage.map(Settings::load).unwrap_or_default();
 
-        // Show the "What's new" dialog once after an update: the running binary's
-        // version differs from the one last seen, and we have notes for it. A
-        // fresh install (no stored version) is not treated as an upgrade.
+        // Show the "What's new" dialog once whenever the running binary's notes
+        // haven't been seen yet: either the last-seen version differs from the
+        // current one, or there is no stored version at all (a fresh install, or
+        // an upgrade from a pre-1.1.0 build that predates this key). Gated on
+        // having notes for the current version so it never opens empty.
         let last_seen_version = storage.and_then(|s| s.get_string("last_seen_version"));
-        let changelog_open = match &last_seen_version {
-            Some(prev) => {
-                prev != env!("CARGO_PKG_VERSION")
-                    && crate::changelog::notes_for(env!("CARGO_PKG_VERSION")).is_some()
-            }
-            None => false,
-        };
+        let changelog_open = last_seen_version.as_deref() != Some(env!("CARGO_PKG_VERSION"))
+            && crate::changelog::notes_for(env!("CARGO_PKG_VERSION")).is_some();
 
         // Register JetBrains Mono as the primary monospace font to match the design.
         let mut fonts = egui::FontDefinitions::default();
