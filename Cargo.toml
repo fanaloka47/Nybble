@@ -1,3 +1,14 @@
 [workspace]
 resolver = "2"
 members = ["crates/core", "crates/gui"]
+# Vendored winit is a [patch] source, not a workspace member.
+exclude = ["vendor/winit"]
+
+# Replace the winit 0.30.13 that eframe/egui pulls in with a vendored copy that
+# backports upstream winit commit 488c036a ("Fixes #4041") — the Windows 11
+# multi-monitor DPI drag fix that landed only on winit's master/0.31 line and
+# was never released on the 0.30.x series. See vendor/winit/NOTICE.
+# Remove this block and the vendor/winit directory once eframe/egui depends on a
+# winit release that already contains the fix.
+[patch.crates-io]
+winit = { path = "vendor/winit" }

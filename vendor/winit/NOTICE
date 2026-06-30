@@ -1,0 +1,38 @@
+This is a vendored, MODIFIED copy of winit 0.30.13.
+
+Upstream:  https://github.com/rust-windowing/winit (tag v0.30.13)
+License:   Apache-2.0 (see LICENSE)
+
+Modifications by the Nybble project
+-----------------------------------
+Backported upstream winit commit 488c036a ("win32: disable DPI
+re-adjustments on Windows 11", which "Fixes #4041") onto the 0.30.13
+release, because the fix landed only on winit's master/0.31 line and was
+never released on the 0.30.x series that eframe/egui 0.34 depends on.
+
+Files changed relative to upstream v0.30.13:
+  * src/platform_impl/windows/util.rs
+      - added `WIN10_BUILD_VERSION` (reads the Windows build number via
+        ntdll!RtlGetVersion).
+  * src/platform_impl/windows/event_loop.rs
+      - in the WM_DPICHANGED handler, the legacy DPI re-adjustment
+        (recompute + cursor-bias + monitor-nudge) is now gated to Windows
+        10 builds (< 22000); on Windows 11+ the OS-suggested rectangle is
+        used verbatim. This stops the multi-monitor DPI drag ping-pong.
+
+The vendored tree has also been trimmed to only what is needed to build
+the library for this project's targets (Windows and Linux):
+  * Removed the non-target platform backends and their public extension
+    modules: android, ios, macos, orbital, web (in src/platform_impl/ and
+    src/platform/), plus their module declarations in
+    src/platform_impl/mod.rs, src/platform/mod.rs and src/lib.rs. This copy
+    builds only for Windows and Linux; it will NOT build for those removed
+    platforms or on docs.rs.
+  * Removed the `changelog` module (src/changelog/, release-notes docs
+    only) and its declaration in src/lib.rs, and dpi/CHANGELOG.md.
+  * Removed examples, tests, docs, CI config, project metadata, and winit's
+    own Cargo.lock (unused when winit is a [patch] path dependency).
+
+This copy exists only until eframe/egui adopts a winit release that already
+contains the fix, at which point it should be deleted along with the
+`[patch.crates-io]` entry in the workspace Cargo.toml.
