@@ -104,8 +104,17 @@ impl App {
             "0xFF & (1 << 3) · log2(4)"
         };
 
+        // The box is multiline so long expressions wrap, but it behaves like a
+        // single field: Enter submits rather than inserting a newline. Consume
+        // the key *before* the TextEdit sees it — inserting a newline and then
+        // stripping it back out makes the field flicker for a frame.
+        let expr_id = egui::Id::new("nybble_expr_input");
+        let submit_via_enter = ui.memory(|m| m.has_focus(expr_id))
+            && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
+
         ui.horizontal(|ui| {
             let mut out = egui::TextEdit::multiline(&mut self.expr)
+                .id(expr_id)
                 .font(egui::FontId::new(22.0, egui::FontFamily::Monospace))
                 .desired_width(ui.available_width() - 60.0)
                 .desired_rows(1)
@@ -128,11 +137,9 @@ impl App {
                 out.state.store(ui.ctx(), id);
             }
             let resp = out.response.response.on_hover_text("See Settings > Expressions for a full function reference");
-            // The box is multiline so long expressions wrap instead of scrolling
-            // off-screen, but it still behaves like a single field: Enter submits
-            // rather than inserting a newline, so strip any newline back out.
-            let entered = self.expr.contains('\n') || self.expr.contains('\r');
-            if entered {
+            // A pasted value may still carry newlines; strip them so the field
+            // stays a single logical line. (Typed Enter is handled above.)
+            if self.expr.contains('\n') || self.expr.contains('\r') {
                 self.expr.retain(|c| c != '\n' && c != '\r');
             }
             // Editing the expression clears any stale "invalid" message — we
@@ -155,7 +162,7 @@ impl App {
                 )
                 .on_hover_text("Evaluate (Enter)")
                 .clicked();
-            if clicked || entered {
+            if clicked || submit_via_enter {
                 if self.eval_expr() {
                     self.flash_until = ui.input(|i| i.time) + 0.8;
                 }
