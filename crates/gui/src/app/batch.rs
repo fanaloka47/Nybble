@@ -278,31 +278,28 @@ impl App {
         }
 
         // Status line (its own row, so it never crowds the controls): the
-        // auto-detected base when in Auto mode, then the value/error counts.
+        // auto-detected base when in Auto mode, then the value/error counts. The
+        // count is always shown (0 when the list is empty).
         let show_detected = self.batch_from == SourceBase::Auto && n_values > 0;
-        if show_detected || n_values > 0 {
-            ui.horizontal(|ui| {
-                if show_detected {
-                    // `from` already resolved to the detected base above.
-                    ui.label(
-                        egui::RichText::new(format!("detected: {}", from.label()))
-                            .color(accent)
-                            .small(),
-                    )
-                    .on_hover_text("Source base guessed from the first 20 lines");
-                    ui.label(egui::RichText::new("·").weak().small());
-                }
-                if n_values > 0 {
-                    let counts = if n_errors > 0 {
-                        format!("{n_values} values · {n_errors} errors")
-                    } else {
-                        format!("{n_values} values")
-                    };
-                    ui.label(egui::RichText::new(counts).weak().small());
-                }
-            });
-            ui.add_space(4.0);
-        }
+        ui.horizontal(|ui| {
+            if show_detected {
+                // `from` already resolved to the detected base above.
+                ui.label(
+                    egui::RichText::new(format!("detected: {}", from.label()))
+                        .color(accent)
+                        .small(),
+                )
+                .on_hover_text("Source base guessed from the first 20 lines");
+                ui.label(egui::RichText::new("·").weak().small());
+            }
+            let counts = if n_errors > 0 {
+                format!("{n_values} values · {n_errors} errors")
+            } else {
+                format!("{n_values} values")
+            };
+            ui.label(egui::RichText::new(counts).weak().small());
+        });
+        ui.add_space(4.0);
 
         // Build the output column: one line per input line so the two stay
         // row-aligned (blank stays blank, a bad token shows an inline "!!"
@@ -378,13 +375,15 @@ impl App {
                         .id_salt("batch_output_h")
                         .auto_shrink([false, true])
                         .show(&mut cols[1], |ui| {
+                            // A `&str` buffer is a read-only `TextBuffer`, so the
+                            // output is selectable and copyable but not editable.
+                            let mut output_ref: &str = &output;
                             ui.add(
-                                egui::TextEdit::multiline(&mut output)
+                                egui::TextEdit::multiline(&mut output_ref)
                                     .font(font.clone())
                                     .desired_rows(20)
                                     .desired_width(f32::INFINITY)
-                                    .layouter(&mut output_layouter)
-                                    .interactive(false),
+                                    .layouter(&mut output_layouter),
                             );
                         });
                 });
