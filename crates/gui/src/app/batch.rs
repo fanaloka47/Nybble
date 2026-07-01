@@ -245,7 +245,7 @@ impl App {
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("From").weak().small());
                 source_combo(ui, "batch_from", &mut self.batch_from);
-                ui.label(egui::RichText::new("->").weak());
+                ui.label(egui::RichText::new("→").monospace().weak());
                 ui.label(egui::RichText::new("To").weak().small());
                 base_combo(ui, "batch_to", &mut self.batch_to);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
