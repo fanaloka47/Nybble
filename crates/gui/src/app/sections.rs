@@ -441,7 +441,15 @@ impl App {
                 continue;
             }
             let label = field_label(field);
-            let (edit_changed, enter_pressed, copy_clicked, send_clicked, buf_text) = {
+            // The box is multiline so long values wrap, but it behaves like a
+            // single field: Enter submits (defocusing) rather than inserting
+            // a newline. Consume the key *before* the TextEdit sees it —
+            // inserting a newline and then stripping it back out makes the
+            // field flicker for a frame.
+            let field_id = egui::Id::new(("nybble_field_input", label));
+            let submit_via_enter = ui.memory(|m| m.has_focus(field_id))
+                && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
+            let (edit_changed, lost_focus, copy_clicked, send_clicked, buf_text, resp) = {
                 let buf = self.buffer_mut(field);
                 ui.horizontal_top(|ui| {
                     ui.add_sized(
@@ -453,6 +461,7 @@ impl App {
                         let send_clicked = widgets::send_icon_button(ui).clicked();
                         let resp = ui.add(
                             egui::TextEdit::multiline(buf)
+                                .id(field_id)
                                 .font(egui::FontId::new(16.0, egui::FontFamily::Monospace))
                                 .desired_width(f32::INFINITY)
                                 .desired_rows(1)
@@ -474,13 +483,13 @@ impl App {
                                 egui::StrokeKind::Outside,
                             );
                         }
-                        let had_newline = buf.contains('\n') || buf.contains('\r');
                         (
                             resp.changed(),
-                            had_newline,
+                            resp.lost_focus(),
                             copy_clicked,
                             send_clicked,
                             buf.clone(),
+                            resp,
                         )
                     })
                     .inner
@@ -488,13 +497,21 @@ impl App {
                 .inner
             };
             if edit_changed {
-                // Strip newlines the multiline widget may insert when Enter is pressed.
+                // A paste may still carry newlines; strip them so the field
+                // stays a single logical line. (Typed Enter is handled below.)
                 self.buffer_mut(field).retain(|c| c != '\n' && c != '\r');
                 self.on_field_edit(field);
-                if enter_pressed {
-                    self.flash_until = ui.input(|i| i.time) + 0.8;
-                    self.value_just_changed = false; // already flashing, don't double-trigger
-                }
+            }
+            if submit_via_enter {
+                resp.surrender_focus();
+                self.refresh(None);
+                self.flash_until = ui.input(|i| i.time) + 0.8;
+                self.value_just_changed = false; // already flashing, don't double-trigger
+            } else if lost_focus {
+                // Re-render the field from the canonical value so group
+                // separators (dropped while the field was focused, to avoid
+                // disrupting typing) reappear once editing ends.
+                self.refresh(None);
             }
             if copy_clicked {
                 let text = self.settings.copy.apply(label, &buf_text);

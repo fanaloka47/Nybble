@@ -1243,6 +1243,19 @@ mod tests {
     }
 
     #[test]
+    fn on_field_edit_dec_leaves_buffer_unformatted_until_blur() {
+        // While the field is being edited, its own buffer is left untouched
+        // (skip = Some(field)) so separators don't disrupt typing.
+        let mut app = App::for_test();
+        app.dec = "1000".to_string();
+        app.on_field_edit(Field::Dec);
+        assert_eq!(app.dec, "1000");
+        // Losing focus triggers a full refresh, which re-inserts separators.
+        app.refresh(None);
+        assert_eq!(app.dec, "1'000");
+    }
+
+    #[test]
     fn on_field_edit_bin_parses_correctly() {
         let mut app = App::for_test();
         app.bin = "1111".to_string();
