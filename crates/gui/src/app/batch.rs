@@ -272,24 +272,17 @@ impl App {
         let from = self.batch_from.resolve(&self.batch_input);
         let to = self.batch_to;
 
-        // Build the output column and per-line counts from the current input.
-        let mut output = String::new();
+        // Per-line counts for the summary.
         let mut n_values = 0usize;
         let mut n_errors = 0usize;
-        for (i, line) in self.batch_input.split('\n').enumerate() {
-            if i > 0 {
-                output.push('\n');
-            }
-            if line.trim().is_empty() {
+        for line in self.batch_input.split('\n') {
+            let t = line.trim();
+            if t.is_empty() {
                 continue;
             }
             n_values += 1;
-            match convert_line(line, from, to) {
-                Ok(s) => output.push_str(&s),
-                Err(e) => {
-                    n_errors += 1;
-                    output.push_str(&format!("!! {e}"));
-                }
+            if convert_line(t, from, to).is_err() {
+                n_errors += 1;
             }
         }
 
@@ -303,32 +296,89 @@ impl App {
             ui.add_space(4.0);
         }
 
-        // The two columns live in one scroll area so scrolling and row heights
-        // stay in lockstep; both text areas use the same monospace metrics.
+        // Build the output column: one line per input line so the two stay
+        // row-aligned (blank stays blank, a bad token shows an inline "!!"
+        // marker). Kept in lockstep with the input's line count.
+        let mut output = String::new();
+        for (i, line) in self.batch_input.split('\n').enumerate() {
+            if i > 0 {
+                output.push('\n');
+            }
+            let t = line.trim();
+            if t.is_empty() {
+                continue;
+            }
+            match convert_line(t, from, to) {
+                Ok(s) => output.push_str(&s),
+                Err(e) => {
+                    output.push_str("!! ");
+                    output.push_str(&e);
+                }
+            }
+        }
+
+        // Two non-wrapping text boxes in a shared vertical scroll: each value
+        // stays on a single line so the columns line up row-for-row, and each
+        // column scrolls sideways on its own for long values. The input is a
+        // single TextEdit, so ordinary list editing — selecting, copying or
+        // deleting a range of lines — works as usual.
+        //
+        // egui's ScrollArea deliberately makes a multiline TextEdit wrap to the
+        // viewport rather than overflow (it prefers wrapping to a horizontal
+        // scrollbar), and `desired_width` can't override that. The way around it
+        // is a custom `layouter` that lays the text out with an infinite wrap
+        // width: the galley then keeps each line whole, overflows the viewport,
+        // and the horizontal scroll area scrolls to reveal it.
         let font = egui::FontId::new(15.0, egui::FontFamily::Monospace);
+        let make_layouter = |font: egui::FontId| {
+            move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, _wrap: f32| {
+                let job = egui::text::LayoutJob::simple(
+                    buf.as_str().to_owned(),
+                    font.clone(),
+                    ui.visuals().text_color(),
+                    f32::INFINITY,
+                );
+                ui.fonts_mut(|f| f.layout_job(job))
+            }
+        };
+        let mut input_layouter = make_layouter(font.clone());
+        let mut output_layouter = make_layouter(font.clone());
+
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.columns(2, |cols| {
                     cols[0].label(egui::RichText::new("INPUT").weak().small());
                     cols[0].add_space(4.0);
-                    cols[0].add(
-                        egui::TextEdit::multiline(&mut self.batch_input)
-                            .font(font.clone())
-                            .desired_rows(20)
-                            .desired_width(f32::INFINITY)
-                            .hint_text("Paste values, one per line"),
-                    );
+                    egui::ScrollArea::horizontal()
+                        .id_salt("batch_input_h")
+                        .auto_shrink([false, true])
+                        .show(&mut cols[0], |ui| {
+                            ui.add(
+                                egui::TextEdit::multiline(&mut self.batch_input)
+                                    .font(font.clone())
+                                    .desired_rows(20)
+                                    .desired_width(f32::INFINITY)
+                                    .layouter(&mut input_layouter)
+                                    .hint_text("Paste values, one per line"),
+                            );
+                        });
 
                     cols[1].label(egui::RichText::new("OUTPUT").weak().small());
                     cols[1].add_space(4.0);
-                    cols[1].add(
-                        egui::TextEdit::multiline(&mut output)
-                            .font(font.clone())
-                            .desired_rows(20)
-                            .desired_width(f32::INFINITY)
-                            .interactive(false),
-                    );
+                    egui::ScrollArea::horizontal()
+                        .id_salt("batch_output_h")
+                        .auto_shrink([false, true])
+                        .show(&mut cols[1], |ui| {
+                            ui.add(
+                                egui::TextEdit::multiline(&mut output)
+                                    .font(font.clone())
+                                    .desired_rows(20)
+                                    .desired_width(f32::INFINITY)
+                                    .layouter(&mut output_layouter)
+                                    .interactive(false),
+                            );
+                        });
                 });
             });
 
