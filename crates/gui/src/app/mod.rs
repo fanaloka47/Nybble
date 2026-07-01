@@ -12,6 +12,9 @@ use crate::settings::Settings;
 use crate::theme::{self, ThemeMode};
 use crate::widgets;
 
+use batch::Base;
+
+mod batch;
 mod layout;
 mod sections;
 
@@ -203,6 +206,42 @@ impl SettingsTab {
     }
 }
 
+/// The two top-level workspaces. `Calculator` is the original single-value
+/// programmer's calculator; `Batch` is the list converter (see `batch.rs`).
+/// Selected via the tab bar under the header; persisted across sessions.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum AppTab {
+    #[default]
+    Calculator,
+    Batch,
+}
+
+impl AppTab {
+    const ALL: [AppTab; 2] = [AppTab::Calculator, AppTab::Batch];
+
+    fn label(self) -> &'static str {
+        match self {
+            AppTab::Calculator => "Calculator",
+            AppTab::Batch => "Batch convert",
+        }
+    }
+
+    fn key(self) -> &'static str {
+        match self {
+            AppTab::Calculator => "calculator",
+            AppTab::Batch => "batch",
+        }
+    }
+
+    fn from_key(s: &str) -> Option<AppTab> {
+        match s {
+            "calculator" => Some(AppTab::Calculator),
+            "batch" => Some(AppTab::Batch),
+            _ => None,
+        }
+    }
+}
+
 pub struct App {
     value: Value,
     width: Width,
@@ -256,6 +295,14 @@ pub struct App {
     /// Animation progress for the int/float toggle (0.0 = int, 1.0 = float).
     mode_toggle_anim: f32,
 
+    /// Which top-level workspace is showing (calculator vs. batch converter).
+    tab: AppTab,
+    /// Batch tab: the raw multiline list the user types on the left, and the
+    /// source/target bases for the conversion. Output is derived each frame.
+    batch_input: String,
+    batch_from: Base,
+    batch_to: Base,
+
     theme_mode: ThemeMode,
     view_mode: ViewMode,
     /// View/copy configuration edited via the settings modal.
@@ -306,6 +353,18 @@ impl App {
             .and_then(|s| s.get_string("number_mode"))
             .and_then(|s| NumberMode::from_key(&s))
             .unwrap_or_default();
+        let tab = storage
+            .and_then(|s| s.get_string("tab"))
+            .and_then(|s| AppTab::from_key(&s))
+            .unwrap_or_default();
+        let batch_from = storage
+            .and_then(|s| s.get_string("batch_from"))
+            .and_then(|s| Base::from_key(&s))
+            .unwrap_or(Base::Hex);
+        let batch_to = storage
+            .and_then(|s| s.get_string("batch_to"))
+            .and_then(|s| Base::from_key(&s))
+            .unwrap_or(Base::Dec);
         let custom_size = storage.and_then(|s| {
             let w = s.get_string("custom_w")?.parse::<f32>().ok()?;
             let h = s.get_string("custom_h")?.parse::<f32>().ok()?;
@@ -372,6 +431,10 @@ impl App {
             } else {
                 0.0
             },
+            tab,
+            batch_input: String::new(),
+            batch_from,
+            batch_to,
             theme_mode,
             view_mode,
             settings,
@@ -826,148 +889,112 @@ impl eframe::App for App {
         }
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                // Header: title + subtitle on the left, theme toggle on the right.
-                ui.horizontal(|ui| {
-                    ui.heading("Nybble");
-                    let version_clicked = ui
-                        .add(
-                            egui::Label::new(
-                                egui::RichText::new(concat!("v", env!("CARGO_PKG_VERSION")))
-                                    .monospace()
-                                    .weak()
-                                    .small(),
-                            )
-                            .sense(egui::Sense::click()),
-                        )
-                        .on_hover_text("What's new")
-                        .clicked();
-                    if version_clicked {
-                        self.changelog_open = true;
-                    }
-                    // Debug-only window-size readout, so layout bugs can be
-                    // reported by their exact triggering size.
-                    if cfg!(debug_assertions) {
-                        let sz = ui.ctx().content_rect().size();
-                        ui.label(
-                            egui::RichText::new(format!("{:.0}×{:.0}", sz.x, sz.y))
+            // Header: title + subtitle on the left, theme toggle on the right.
+            ui.horizontal(|ui| {
+                ui.heading("Nybble");
+                let version_clicked = ui
+                    .add(
+                        egui::Label::new(
+                            egui::RichText::new(concat!("v", env!("CARGO_PKG_VERSION")))
                                 .monospace()
                                 .weak()
                                 .small(),
                         )
-                        .on_hover_text("Window size (points). Debug builds only.");
-                    }
-                    ui.with_layout(
-                        egui::Layout::right_to_left(egui::Align::Center),
-                        |ui| {
-                            if let Some(mode) = widgets::theme_icon_toggle(ui, self.theme_mode) {
-                                self.theme_mode = mode;
-                            }
-                            if widgets::settings_icon_button(ui).clicked() {
-                                self.settings_open = !self.settings_open;
-                            }
-                            // Cycle: Compact → Full → Custom (if exists) → Compact
-                            let view_label = self.view_mode.label();
-                            if ui
-                                .button(view_label)
-                                .on_hover_text("Cycle view: Compact / Full / Custom")
-                                .clicked()
-                            {
-                                let (next_mode, new_size) = match self.view_mode {
-                                    ViewMode::Compact => {
-                                        (ViewMode::Full, ViewMode::FULL_SIZE)
-                                    }
-                                    ViewMode::Full => match self.custom_size {
-                                        Some(sz) => (ViewMode::Custom, sz),
-                                        None => (ViewMode::Compact, ViewMode::COMPACT_SIZE),
-                                    },
-                                    ViewMode::Custom => {
-                                        (ViewMode::Compact, ViewMode::COMPACT_SIZE)
-                                    }
-                                };
-                                self.view_mode = next_mode;
-                                self.resize_cooldown = 10;
-                                let new_size = clamp_to_monitor(ui.ctx(), new_size);
-                                ui.ctx().send_viewport_cmd(
-                                    egui::ViewportCommand::InnerSize(new_size),
-                                );
-                            }
-
-                            // Update banner / controls (right-to-left, so leftmost = last).
-                            if let Some(ref v) = self.update_available.clone() {
-                                let label = if self.updating {
-                                    "Updating…".to_owned()
-                                } else {
-                                    format!("Update & restart (v{v})")
-                                };
-                                if ui
-                                    .add_enabled(
-                                        !self.updating,
-                                        egui::Button::new(
-                                            egui::RichText::new(label)
-                                                .color(theme::on_accent(ui.ctx())),
-                                        )
-                                        .fill(theme::accent(ui.ctx())),
-                                    )
-                                    .on_hover_text("Download the new version and restart")
-                                    .clicked()
-                                {
-                                    self.spawn_apply_update(ui.ctx().clone());
-                                }
-                            } else if !self.updating
-                                && self.update_rx.is_none()
-                                && ui
-                                    .button("Check for updates")
-                                    .on_hover_text("Check GitHub Releases for a newer version")
-                                    .clicked()
-                            {
-                                self.spawn_update_check(ui.ctx().clone());
-                            }
-                        },
-                    );
-                });
-                ui.add_space(10.0);
-
-                // The expression spans the full width on top.
-                Self::section(ui, |ui| self.expression_centerpiece(ui));
-
-                // Below it: two columns when there's room, collapsing to a
-                // single stack when the window is narrow. Panels render in the
-                // user-configured order; the two-column split keeps that order
-                // while balancing the columns by rough height.
-                let two_col =
-                    self.view_mode != ViewMode::Compact && ui.available_width() >= 720.0;
-                // `PC_DEBUG=1` dumps the layout decision (and the bit grid dumps
-                // its row geometry) to stderr — cheap introspection for layout
-                // bugs without needing screenshots.
-                if std::env::var("PC_DEBUG").is_ok() {
-                    let sz = ui.ctx().content_rect().size();
-                    eprintln!(
-                        "[layout] window={:.0}x{:.0} ppp={:.2} avail_w={:.1} two_col={two_col} col_w~={:.1}",
-                        sz.x,
-                        sz.y,
-                        ui.ctx().pixels_per_point(),
-                        ui.available_width(),
-                        (ui.available_width() - ui.spacing().item_spacing.x) / 2.0,
-                    );
+                        .sense(egui::Sense::click()),
+                    )
+                    .on_hover_text("What's new")
+                    .clicked();
+                if version_clicked {
+                    self.changelog_open = true;
                 }
-                let visible = self.visible_panels();
-                if two_col {
-                    let (left, right) = Self::balance_columns(&visible);
-                    ui.columns(2, |cols| {
-                        for &p in &left {
-                            Self::section(&mut cols[0], |ui| self.render_panel(ui, p));
+                // Debug-only window-size readout, so layout bugs can be
+                // reported by their exact triggering size.
+                if cfg!(debug_assertions) {
+                    let sz = ui.ctx().content_rect().size();
+                    ui.label(
+                        egui::RichText::new(format!("{:.0}×{:.0}", sz.x, sz.y))
+                            .monospace()
+                            .weak()
+                            .small(),
+                    )
+                    .on_hover_text("Window size (points). Debug builds only.");
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if let Some(mode) = widgets::theme_icon_toggle(ui, self.theme_mode) {
+                        self.theme_mode = mode;
+                    }
+                    if widgets::settings_icon_button(ui).clicked() {
+                        self.settings_open = !self.settings_open;
+                    }
+                    // Cycle: Compact → Full → Custom (if exists) → Compact
+                    let view_label = self.view_mode.label();
+                    if ui
+                        .button(view_label)
+                        .on_hover_text("Cycle view: Compact / Full / Custom")
+                        .clicked()
+                    {
+                        let (next_mode, new_size) = match self.view_mode {
+                            ViewMode::Compact => (ViewMode::Full, ViewMode::FULL_SIZE),
+                            ViewMode::Full => match self.custom_size {
+                                Some(sz) => (ViewMode::Custom, sz),
+                                None => (ViewMode::Compact, ViewMode::COMPACT_SIZE),
+                            },
+                            ViewMode::Custom => (ViewMode::Compact, ViewMode::COMPACT_SIZE),
+                        };
+                        self.view_mode = next_mode;
+                        self.resize_cooldown = 10;
+                        let new_size = clamp_to_monitor(ui.ctx(), new_size);
+                        ui.ctx()
+                            .send_viewport_cmd(egui::ViewportCommand::InnerSize(new_size));
+                    }
+
+                    // Update banner / controls (right-to-left, so leftmost = last).
+                    if let Some(ref v) = self.update_available.clone() {
+                        let label = if self.updating {
+                            "Updating…".to_owned()
+                        } else {
+                            format!("Update & restart (v{v})")
+                        };
+                        if ui
+                            .add_enabled(
+                                !self.updating,
+                                egui::Button::new(
+                                    egui::RichText::new(label).color(theme::on_accent(ui.ctx())),
+                                )
+                                .fill(theme::accent(ui.ctx())),
+                            )
+                            .on_hover_text("Download the new version and restart")
+                            .clicked()
+                        {
+                            self.spawn_apply_update(ui.ctx().clone());
                         }
-                        for &p in &right {
-                            Self::section(&mut cols[1], |ui| self.render_panel(ui, p));
-                        }
-                    });
-                } else {
-                    for p in visible {
-                        Self::section(ui, |ui| self.render_panel(ui, p));
+                    } else if !self.updating
+                        && self.update_rx.is_none()
+                        && ui
+                            .button("Check for updates")
+                            .on_hover_text("Check GitHub Releases for a newer version")
+                            .clicked()
+                    {
+                        self.spawn_update_check(ui.ctx().clone());
+                    }
+                });
+            });
+            ui.add_space(10.0);
+
+            // Tab bar: switch between the calculator and the batch converter.
+            ui.horizontal(|ui| {
+                for tab in AppTab::ALL {
+                    if ui.selectable_label(self.tab == tab, tab.label()).clicked() {
+                        self.tab = tab;
                     }
                 }
             });
+            ui.add_space(8.0);
+
+            match self.tab {
+                AppTab::Calculator => self.calculator_body(ui),
+                AppTab::Batch => self.batch_body(ui),
+            }
         });
 
         self.settings_window(ui.ctx());
@@ -980,6 +1007,9 @@ impl eframe::App for App {
         storage.set_string("history_base", self.history_base.key().to_owned());
         storage.set_string("view_mode", self.view_mode.key().to_owned());
         storage.set_string("number_mode", self.number_mode.key().to_owned());
+        storage.set_string("tab", self.tab.key().to_owned());
+        storage.set_string("batch_from", self.batch_from.key().to_owned());
+        storage.set_string("batch_to", self.batch_to.key().to_owned());
         storage.set_string(
             "auto_check_updates",
             if self.auto_check_updates {
@@ -1043,6 +1073,10 @@ mod tests {
                 range_lo: 0,
                 width_scrub_accum: 0.0,
                 mode_toggle_anim: 0.0,
+                tab: AppTab::default(),
+                batch_input: String::new(),
+                batch_from: Base::Hex,
+                batch_to: Base::Dec,
                 theme_mode: ThemeMode::default(),
                 view_mode: ViewMode::default(),
                 settings: Settings::default(),

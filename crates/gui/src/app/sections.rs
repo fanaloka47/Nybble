@@ -18,6 +18,52 @@ impl App {
             });
         ui.add_space(10.0);
     }
+    /// The original calculator workspace: the expression centerpiece on top,
+    /// then the value/bits/format/interpret/history panels. Wrapped in its own
+    /// vertical scroll area (the header and tab bar above stay pinned).
+    pub(super) fn calculator_body(&mut self, ui: &mut egui::Ui) {
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            // The expression spans the full width on top.
+            Self::section(ui, |ui| self.expression_centerpiece(ui));
+
+            // Below it: two columns when there's room, collapsing to a
+            // single stack when the window is narrow. Panels render in the
+            // user-configured order; the two-column split keeps that order
+            // while balancing the columns by rough height.
+            let two_col = self.view_mode != super::ViewMode::Compact && ui.available_width() >= 720.0;
+            // `PC_DEBUG=1` dumps the layout decision (and the bit grid dumps
+            // its row geometry) to stderr — cheap introspection for layout
+            // bugs without needing screenshots.
+            if std::env::var("PC_DEBUG").is_ok() {
+                let sz = ui.ctx().content_rect().size();
+                eprintln!(
+                    "[layout] window={:.0}x{:.0} ppp={:.2} avail_w={:.1} two_col={two_col} col_w~={:.1}",
+                    sz.x,
+                    sz.y,
+                    ui.ctx().pixels_per_point(),
+                    ui.available_width(),
+                    (ui.available_width() - ui.spacing().item_spacing.x) / 2.0,
+                );
+            }
+            let visible = self.visible_panels();
+            if two_col {
+                let (left, right) = Self::balance_columns(&visible);
+                ui.columns(2, |cols| {
+                    for &p in &left {
+                        Self::section(&mut cols[0], |ui| self.render_panel(ui, p));
+                    }
+                    for &p in &right {
+                        Self::section(&mut cols[1], |ui| self.render_panel(ui, p));
+                    }
+                });
+            } else {
+                for p in visible {
+                    Self::section(ui, |ui| self.render_panel(ui, p));
+                }
+            }
+        });
+    }
+
     pub(super) fn expression_centerpiece(&mut self, ui: &mut egui::Ui) {
         let accent = theme::accent(ui.ctx());
         let on_accent = theme::on_accent(ui.ctx());
@@ -136,7 +182,10 @@ impl App {
                     .set_char_range(Some(egui::text::CCursorRange::one(end)));
                 out.state.store(ui.ctx(), id);
             }
-            let resp = out.response.response.on_hover_text("See Settings > Expressions for a full function reference");
+            let resp = out
+                .response
+                .response
+                .on_hover_text("See Settings > Expressions for a full function reference");
             // A pasted value may still carry newlines; strip them so the field
             // stays a single logical line. (Typed Enter is handled above.)
             if self.expr.contains('\n') || self.expr.contains('\r') {
@@ -1346,10 +1395,8 @@ fn value_line(
             if widgets::send_icon_button(ui).clicked() {
                 action = Some(LineAction::Sent(expr_literal(label, &text)));
             }
-            ui.add(
-                egui::Label::new(egui::RichText::new(&text).monospace()).truncate(),
-            )
-            .on_hover_text(&text);
+            ui.add(egui::Label::new(egui::RichText::new(&text).monospace()).truncate())
+                .on_hover_text(&text);
         });
     });
     action
