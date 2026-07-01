@@ -352,41 +352,69 @@ impl App {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                ui.columns(2, |cols| {
-                    cols[0].label(egui::RichText::new("INPUT").weak().small());
-                    cols[0].add_space(4.0);
-                    egui::ScrollArea::horizontal()
-                        .id_salt("batch_input_h")
-                        .auto_shrink([false, true])
-                        .show(&mut cols[0], |ui| {
-                            ui.add(
-                                egui::TextEdit::multiline(&mut self.batch_input)
-                                    .font(font.clone())
-                                    .desired_rows(20)
-                                    .desired_width(f32::INFINITY)
-                                    .layouter(&mut input_layouter)
-                                    .hint_text("Paste values, one per line"),
-                            );
-                        });
+                let gap = 13.0;
+                let col_w = ((ui.available_width() - gap) / 2.0).max(80.0);
+                let row = ui.horizontal_top(|ui| {
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(col_w, 0.0),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            ui.label(egui::RichText::new("INPUT").weak().small());
+                            ui.add_space(4.0);
+                            egui::ScrollArea::horizontal()
+                                .id_salt("batch_input_h")
+                                .auto_shrink([false, true])
+                                .show(ui, |ui| {
+                                    ui.add(
+                                        egui::TextEdit::multiline(&mut self.batch_input)
+                                            .font(font.clone())
+                                            .desired_rows(20)
+                                            .desired_width(f32::INFINITY)
+                                            .layouter(&mut input_layouter)
+                                            .hint_text("Paste values, one per line"),
+                                    );
+                                });
+                        },
+                    );
 
-                    cols[1].label(egui::RichText::new("OUTPUT").weak().small());
-                    cols[1].add_space(4.0);
-                    egui::ScrollArea::horizontal()
-                        .id_salt("batch_output_h")
-                        .auto_shrink([false, true])
-                        .show(&mut cols[1], |ui| {
-                            // A `&str` buffer is a read-only `TextBuffer`, so the
-                            // output is selectable and copyable but not editable.
-                            let mut output_ref: &str = &output;
-                            ui.add(
-                                egui::TextEdit::multiline(&mut output_ref)
-                                    .font(font.clone())
-                                    .desired_rows(20)
-                                    .desired_width(f32::INFINITY)
-                                    .layouter(&mut output_layouter),
-                            );
-                        });
+                    ui.add_space(gap);
+
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(col_w, 0.0),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            ui.label(egui::RichText::new("OUTPUT").weak().small());
+                            ui.add_space(4.0);
+                            egui::ScrollArea::horizontal()
+                                .id_salt("batch_output_h")
+                                .auto_shrink([false, true])
+                                .show(ui, |ui| {
+                                    // A `&str` buffer is a read-only `TextBuffer`,
+                                    // so the output is selectable and copyable but
+                                    // not editable.
+                                    let mut output_ref: &str = &output;
+                                    ui.add(
+                                        egui::TextEdit::multiline(&mut output_ref)
+                                            .font(font.clone())
+                                            .desired_rows(20)
+                                            .desired_width(f32::INFINITY)
+                                            .layouter(&mut output_layouter),
+                                    );
+                                });
+                        },
+                    );
                 });
+
+                // A light vertical divider down the middle, spanning the height
+                // of the columns, so the boundary stays clear even when long
+                // values overflow and clip at the column edge.
+                let rect = row.response.rect;
+                let x = rect.left() + col_w + gap / 2.0;
+                ui.painter().vline(
+                    x,
+                    rect.top()..=rect.bottom(),
+                    ui.visuals().widgets.noninteractive.bg_stroke,
+                );
             });
 
         if copy_all {
