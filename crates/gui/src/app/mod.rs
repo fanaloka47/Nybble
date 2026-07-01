@@ -12,7 +12,7 @@ use crate::settings::Settings;
 use crate::theme::{self, ThemeMode};
 use crate::widgets;
 
-use batch::Base;
+use batch::{Base, SourceBase};
 
 mod batch;
 mod layout;
@@ -298,9 +298,10 @@ pub struct App {
     /// Which top-level workspace is showing (calculator vs. batch converter).
     tab: AppTab,
     /// Batch tab: the raw multiline list the user types on the left, and the
-    /// source/target bases for the conversion. Output is derived each frame.
+    /// source/target bases for the conversion. The source may be Auto-detect;
+    /// output is derived each frame.
     batch_input: String,
-    batch_from: Base,
+    batch_from: SourceBase,
     batch_to: Base,
 
     theme_mode: ThemeMode,
@@ -359,8 +360,8 @@ impl App {
             .unwrap_or_default();
         let batch_from = storage
             .and_then(|s| s.get_string("batch_from"))
-            .and_then(|s| Base::from_key(&s))
-            .unwrap_or(Base::Hex);
+            .and_then(|s| SourceBase::from_key(&s))
+            .unwrap_or(SourceBase::Auto);
         let batch_to = storage
             .and_then(|s| s.get_string("batch_to"))
             .and_then(|s| Base::from_key(&s))
@@ -1075,7 +1076,7 @@ mod tests {
                 mode_toggle_anim: 0.0,
                 tab: AppTab::default(),
                 batch_input: String::new(),
-                batch_from: Base::Hex,
+                batch_from: SourceBase::Auto,
                 batch_to: Base::Dec,
                 theme_mode: ThemeMode::default(),
                 view_mode: ViewMode::default(),

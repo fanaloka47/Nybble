@@ -12,9 +12,10 @@
 use nybble_core::{parse_base, Signedness, Value, Width};
 
 use super::App;
+use crate::theme;
 
 /// One of the four numeric bases the converter reads from / writes to.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Base {
     Hex,
     Dec,
@@ -63,6 +64,125 @@ impl Base {
     }
 }
 
+/// The left-dropdown selection: a fixed source base, or auto-detection from the
+/// list itself.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SourceBase {
+    Auto,
+    Fixed(Base),
+}
+
+impl SourceBase {
+    const ALL: [SourceBase; 5] = [
+        SourceBase::Auto,
+        SourceBase::Fixed(Base::Hex),
+        SourceBase::Fixed(Base::Dec),
+        SourceBase::Fixed(Base::Bin),
+        SourceBase::Fixed(Base::Oct),
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            SourceBase::Auto => "Auto-detect",
+            SourceBase::Fixed(b) => b.label(),
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            SourceBase::Auto => "auto",
+            SourceBase::Fixed(b) => b.key(),
+        }
+    }
+
+    pub fn from_key(s: &str) -> Option<SourceBase> {
+        match s {
+            "auto" => Some(SourceBase::Auto),
+            other => Base::from_key(other).map(SourceBase::Fixed),
+        }
+    }
+
+    /// The concrete base to parse with; runs [`detect_base`] over `input` for
+    /// [`SourceBase::Auto`].
+    fn resolve(self, input: &str) -> Base {
+        match self {
+            SourceBase::Fixed(b) => b,
+            SourceBase::Auto => detect_base(input),
+        }
+    }
+}
+
+/// Guess the source base from the first 20 non-empty lines.
+///
+/// Explicit base prefixes (`0x`/`0b`/`0o`) are the strongest signal and win by
+/// majority. With no prefixes, the digit alphabet decides: any hex letter means
+/// hex; an 8 or 9 means decimal; only 0/1 means binary; a run of `0-7` digits
+/// with a leading zero (the C-style octal convention) means octal; anything
+/// else falls back to decimal. Empty input defaults to decimal.
+fn detect_base(input: &str) -> Base {
+    let sample: Vec<&str> = input
+        .split('\n')
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .take(20)
+        .collect();
+    if sample.is_empty() {
+        return Base::Dec;
+    }
+
+    // Explicit prefixes are the strongest signal; go with the most common one.
+    let (mut hex_p, mut bin_p, mut oct_p) = (0u32, 0u32, 0u32);
+    for t in &sample {
+        let low = t.to_ascii_lowercase();
+        if low.starts_with("0x") {
+            hex_p += 1;
+        } else if low.starts_with("0b") {
+            bin_p += 1;
+        } else if low.starts_with("0o") {
+            oct_p += 1;
+        }
+    }
+    if hex_p + bin_p + oct_p > 0 {
+        return if hex_p >= oct_p && hex_p >= bin_p {
+            Base::Hex
+        } else if oct_p >= bin_p {
+            Base::Oct
+        } else {
+            Base::Bin
+        };
+    }
+
+    // No prefixes: infer from the digits used across the sample.
+    let (mut hex_letter, mut dec_digit, mut has_2_to_7) = (false, false, false);
+    let mut all_leading_zero = true;
+    for t in &sample {
+        let body = t.strip_prefix('-').unwrap_or(t);
+        if !(body.len() > 1 && body.starts_with('0')) {
+            all_leading_zero = false;
+        }
+        for c in body.chars() {
+            match c {
+                '_' | '\'' | '0' | '1' => {}
+                '2'..='7' => has_2_to_7 = true,
+                '8' | '9' => dec_digit = true,
+                'a'..='f' | 'A'..='F' => hex_letter = true,
+                _ => {}
+            }
+        }
+    }
+    if hex_letter {
+        Base::Hex
+    } else if dec_digit {
+        Base::Dec
+    } else if !has_2_to_7 {
+        Base::Bin
+    } else if all_leading_zero {
+        Base::Oct
+    } else {
+        Base::Dec
+    }
+}
+
 /// Convert a single bare token from `from` to `to`, rendered with minimal digits
 /// (no zero-padding), grouped for readability. A blank token yields an empty
 /// string so line alignment is preserved; a parse failure yields the error text.
@@ -102,17 +222,38 @@ fn base_combo(ui: &mut egui::Ui, id: &str, current: &mut Base) {
         });
 }
 
+/// The source-base dropdown; includes the Auto-detect option.
+fn source_combo(ui: &mut egui::Ui, id: &str, current: &mut SourceBase) {
+    egui::ComboBox::from_id_salt(id)
+        .selected_text(current.label())
+        .show_ui(ui, |ui| {
+            for b in SourceBase::ALL {
+                ui.selectable_value(current, b, b.label());
+            }
+        });
+}
+
 impl App {
     pub(super) fn batch_body(&mut self, ui: &mut egui::Ui) {
-        let from = self.batch_from;
-        let to = self.batch_to;
+        let accent = theme::accent(ui.ctx());
 
-        // Controls: from -> to, plus a right-aligned "Copy all".
+        // Controls: from -> to, plus a right-aligned "Copy all". When the source
+        // is Auto-detect, the base it resolved to is shown inline so the reader
+        // knows how the list is being interpreted.
         let mut copy_all = false;
         Self::section(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("From").weak().small());
-                base_combo(ui, "batch_from", &mut self.batch_from);
+                source_combo(ui, "batch_from", &mut self.batch_from);
+                if self.batch_from == SourceBase::Auto {
+                    let detected = detect_base(&self.batch_input);
+                    ui.label(
+                        egui::RichText::new(format!("detected: {}", detected.label()))
+                            .color(accent)
+                            .small(),
+                    )
+                    .on_hover_text("Source base guessed from the first 20 lines");
+                }
                 ui.label(egui::RichText::new("->").weak());
                 ui.label(egui::RichText::new("To").weak().small());
                 base_combo(ui, "batch_to", &mut self.batch_to);
@@ -127,6 +268,9 @@ impl App {
                 });
             });
         });
+
+        let from = self.batch_from.resolve(&self.batch_input);
+        let to = self.batch_to;
 
         // Build the output column and per-line counts from the current input.
         let mut output = String::new();
@@ -254,5 +398,52 @@ mod tests {
     #[test]
     fn invalid_digit_is_error() {
         assert!(convert_line("ZZ", Base::Hex, Base::Dec).is_err());
+    }
+
+    #[test]
+    fn detect_empty_defaults_to_dec() {
+        assert_eq!(detect_base(""), Base::Dec);
+        assert_eq!(detect_base("\n  \n"), Base::Dec);
+    }
+
+    #[test]
+    fn detect_prefixes_win() {
+        assert_eq!(detect_base("0xFF\n0x10\n0xAB"), Base::Hex);
+        assert_eq!(detect_base("0b1010\n0b0011"), Base::Bin);
+        assert_eq!(detect_base("0o17\n0o755"), Base::Oct);
+    }
+
+    #[test]
+    fn detect_hex_letters() {
+        assert_eq!(detect_base("DEAD\nBEEF\n10"), Base::Hex);
+    }
+
+    #[test]
+    fn detect_decimal_from_8_or_9() {
+        assert_eq!(detect_base("10\n29\n300"), Base::Dec);
+    }
+
+    #[test]
+    fn detect_binary_from_only_0_and_1() {
+        assert_eq!(detect_base("1010\n0110\n1"), Base::Bin);
+    }
+
+    #[test]
+    fn detect_octal_from_leading_zero_run() {
+        assert_eq!(detect_base("0755\n0644\n0022"), Base::Oct);
+    }
+
+    #[test]
+    fn detect_decimal_when_0_to_7_without_leading_zero() {
+        // Ambiguous 0-7 digits with no octal signal fall back to decimal.
+        assert_eq!(detect_base("17\n23\n45"), Base::Dec);
+    }
+
+    #[test]
+    fn detect_uses_only_first_20_lines() {
+        // 20 hex-lettered lines, then a decimal one that must not sway it.
+        let mut input = "AB\n".repeat(20);
+        input.push_str("999");
+        assert_eq!(detect_base(&input), Base::Hex);
     }
 }
