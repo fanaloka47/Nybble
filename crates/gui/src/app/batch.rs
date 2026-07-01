@@ -237,23 +237,14 @@ impl App {
     pub(super) fn batch_body(&mut self, ui: &mut egui::Ui) {
         let accent = theme::accent(ui.ctx());
 
-        // Controls: from -> to, plus a right-aligned "Copy all". When the source
-        // is Auto-detect, the base it resolved to is shown inline so the reader
-        // knows how the list is being interpreted.
+        // Controls: from -> to, plus a right-aligned "Copy all". The auto-detected
+        // base is shown on the status line below, not here, so it never crowds
+        // the dropdowns and the button on a narrow window.
         let mut copy_all = false;
         Self::section(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("From").weak().small());
                 source_combo(ui, "batch_from", &mut self.batch_from);
-                if self.batch_from == SourceBase::Auto {
-                    let detected = detect_base(&self.batch_input);
-                    ui.label(
-                        egui::RichText::new(format!("detected: {}", detected.label()))
-                            .color(accent)
-                            .small(),
-                    )
-                    .on_hover_text("Source base guessed from the first 20 lines");
-                }
                 ui.label(egui::RichText::new("->").weak());
                 ui.label(egui::RichText::new("To").weak().small());
                 base_combo(ui, "batch_to", &mut self.batch_to);
@@ -286,13 +277,30 @@ impl App {
             }
         }
 
-        if n_values > 0 {
-            let summary = if n_errors > 0 {
-                format!("{n_values} values · {n_errors} errors")
-            } else {
-                format!("{n_values} values")
-            };
-            ui.label(egui::RichText::new(summary).weak().small());
+        // Status line (its own row, so it never crowds the controls): the
+        // auto-detected base when in Auto mode, then the value/error counts.
+        let show_detected = self.batch_from == SourceBase::Auto && n_values > 0;
+        if show_detected || n_values > 0 {
+            ui.horizontal(|ui| {
+                if show_detected {
+                    // `from` already resolved to the detected base above.
+                    ui.label(
+                        egui::RichText::new(format!("detected: {}", from.label()))
+                            .color(accent)
+                            .small(),
+                    )
+                    .on_hover_text("Source base guessed from the first 20 lines");
+                    ui.label(egui::RichText::new("·").weak().small());
+                }
+                if n_values > 0 {
+                    let counts = if n_errors > 0 {
+                        format!("{n_values} values · {n_errors} errors")
+                    } else {
+                        format!("{n_values} values")
+                    };
+                    ui.label(egui::RichText::new(counts).weak().small());
+                }
+            });
             ui.add_space(4.0);
         }
 
