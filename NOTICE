@@ -1,0 +1,14 @@
+Nybble
+Copyright 2026 fanaloka47
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+------------------------------------------------------------------------
+Third-party / vendored code
+------------------------------------------------------------------------
+
+vendor/winit/
+    A MODIFIED copy of winit 0.30.13 (https://github.com/rust-windowing/winit),
+    licensed under the Apache License, Version 2.0. The modifications made
+    for this project are documented in vendor/winit/NOTICE, and the original
+    license text is preserved in vendor/winit/LICENSE.

@@ -3,6 +3,7 @@ name = "nybble-core"
 version = "1.2.0"
 edition = "2021"
 description = "Pure numeric core for Nybble: multi-base values, width/signedness, ops, expressions."
+license = "Apache-2.0"
 
 [lib]
 name = "nybble_core"
