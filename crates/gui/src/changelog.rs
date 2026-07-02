@@ -14,6 +14,17 @@ pub struct ReleaseNotes {
 /// `crates/gui/Cargo.toml`'s `version` to match — each time you cut a release.
 pub const ENTRIES: &[ReleaseNotes] = &[
     ReleaseNotes {
+        version: "1.3.0",
+        items: &[
+            "Added a Batch convert tab: paste a whole list of numbers and convert them between bases at once, with a Copy all button.",
+            "The batch converter auto-detects the source base of your list (or you can pick one), and shows the detected base and a value/error count.",
+            "The HEX/DEC/BIN/OCT value fields now accept full expressions, evaluated in each field's own base — e.g. DEAD & 0xF0 in hex, 1 << 3 in binary, or ans * 2 anywhere.",
+            "Value fields now re-format with group separators as soon as you leave the field or press Enter.",
+            "Added an About tab in Settings showing the version, license, and third-party attribution.",
+            "Redesigned the app icon as a colored abacus.",
+        ],
+    },
+    ReleaseNotes {
         version: "1.2.0",
         items: &[
             "Added a setting to send an expression's result back into the input field in decimal, ready to build the next expression on (Settings → Expressions; off by default).",
