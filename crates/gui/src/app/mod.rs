@@ -190,13 +190,15 @@ enum SettingsTab {
     Panels,
     Copy,
     Expressions,
+    About,
 }
 
 impl SettingsTab {
-    const ALL: [SettingsTab; 3] = [
+    const ALL: [SettingsTab; 4] = [
         SettingsTab::Panels,
         SettingsTab::Copy,
         SettingsTab::Expressions,
+        SettingsTab::About,
     ];
 
     fn label(self) -> &'static str {
@@ -204,6 +206,7 @@ impl SettingsTab {
             SettingsTab::Panels => "Panels",
             SettingsTab::Copy => "Copy",
             SettingsTab::Expressions => "Expressions",
+            SettingsTab::About => "About",
         }
     }
 }

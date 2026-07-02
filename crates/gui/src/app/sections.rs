@@ -857,6 +857,7 @@ impl App {
                                 SettingsTab::Panels => self.panels_settings(ui),
                                 SettingsTab::Copy => self.copy_settings(ui),
                                 SettingsTab::Expressions => self.expressions_settings(ui),
+                                SettingsTab::About => self.about_settings(ui),
                             });
                     });
                 });
@@ -980,6 +981,55 @@ impl App {
         }
     }
 
+    /// About pane: app identity, version, author/copyright, license and the
+    /// third-party attribution that mirrors the repository's LICENSE/NOTICE.
+    fn about_settings(&mut self, ui: &mut egui::Ui) {
+        const REPO_URL: &str = "https://github.com/fanaloka47/nybble";
+
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Nybble").size(16.0).strong());
+            ui.label(
+                egui::RichText::new(concat!("v", env!("CARGO_PKG_VERSION")))
+                    .weak()
+                    .monospace(),
+            );
+        });
+        ui.add_space(2.0);
+        ui.label(
+            egui::RichText::new("A programmer's calculator for hardware and FPGA engineers.")
+                .weak(),
+        );
+
+        ui.add_space(10.0);
+        ui.label("Copyright 2026 fanaloka47");
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            ui.label("License: Apache-2.0");
+            ui.hyperlink_to("View license", format!("{REPO_URL}/blob/main/LICENSE"));
+        });
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            ui.label("Source:");
+            ui.hyperlink_to("github.com/fanaloka47/nybble", REPO_URL);
+        });
+
+        ui.add_space(8.0);
+        if ui.button("View release notes").clicked() {
+            self.changelog_open = true;
+        }
+
+        ui.add_space(12.0);
+        ui.separator();
+        ui.add_space(4.0);
+        section_label(ui, "Acknowledgements");
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.label(egui::RichText::new("Bundles a modified copy of").weak());
+            ui.hyperlink_to("winit", "https://github.com/rust-windowing/winit");
+            ui.label(egui::RichText::new("(Apache-2.0).").weak());
+        });
+    }
+
     /// Expressions pane: the evaluation behaviour toggle followed by the static
     /// grammar/function reference.
     fn expressions_settings(&mut self, ui: &mut egui::Ui) {
@@ -1097,6 +1147,7 @@ fn nav_icon_button(ui: &mut egui::Ui, tab: SettingsTab, selected: bool) -> egui:
                 draw_copy_glyph(ui.painter(), c, col, bg);
             }
             SettingsTab::Expressions => draw_expr_glyph(ui.painter(), c, col),
+            SettingsTab::About => draw_info_glyph(ui.painter(), c, col),
         }
     }
     resp.on_hover_text(tab.label())
@@ -1141,6 +1192,20 @@ fn draw_expr_glyph(p: &egui::Painter, c: egui::Pos2, col: egui::Color32) {
         })
         .collect();
     p.add(egui::Shape::line(pts, stroke));
+}
+
+/// An "i" in a circle — the conventional info / about mark.
+fn draw_info_glyph(p: &egui::Painter, c: egui::Pos2, col: egui::Color32) {
+    let stroke = egui::Stroke::new(1.5, col);
+    p.circle_stroke(c, 8.5, stroke);
+    // Dot of the "i".
+    p.circle_filled(egui::pos2(c.x, c.y - 4.0), 1.2, col);
+    // Stem of the "i".
+    let stem = egui::Stroke::new(1.8, col);
+    p.line_segment(
+        [egui::pos2(c.x, c.y - 1.0), egui::pos2(c.x, c.y + 4.5)],
+        stem,
+    );
 }
 
 /// Render a small "weak" section heading.
