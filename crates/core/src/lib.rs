@@ -13,7 +13,7 @@ pub mod ops;
 pub mod parse;
 pub mod value;
 
-pub use expr::{eval, EvalError};
+pub use expr::{eval, eval_radix, EvalError};
 pub use float::{eval_float, f64_to_value};
 pub use parse::{parse_base, parse_literal, ParseError};
 pub use value::{Signedness, Value, Width};

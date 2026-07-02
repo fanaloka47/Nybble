@@ -36,8 +36,17 @@ fn strip_prefix_ci<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
     }
 }
 
-/// Parse a single numeric literal token into its raw `u128` magnitude.
+/// Parse a single numeric literal token into its raw `u128` magnitude. Bare
+/// (unprefixed) digits are interpreted as decimal.
 pub fn parse_literal(s: &str) -> Result<u128, ParseError> {
+    parse_literal_radix(s, 10)
+}
+
+/// Like [`parse_literal`], but bare (unprefixed) digits are interpreted in
+/// `default_radix` instead of decimal — used by the radix-aware expression
+/// evaluator so a token like `DEAD` typed in the hex field parses as base-16.
+/// An explicit `0x`/`0b`/`0o` prefix always overrides `default_radix`.
+pub fn parse_literal_radix(s: &str, default_radix: u32) -> Result<u128, ParseError> {
     let (radix, digits) = if let Some(rest) = strip_prefix_ci(s, "0x") {
         (16u32, rest)
     } else if let Some(rest) = strip_prefix_ci(s, "0b") {
@@ -45,7 +54,7 @@ pub fn parse_literal(s: &str) -> Result<u128, ParseError> {
     } else if let Some(rest) = strip_prefix_ci(s, "0o") {
         (8, rest)
     } else {
-        (10, s)
+        (default_radix, s)
     };
 
     let mut acc: u128 = 0;

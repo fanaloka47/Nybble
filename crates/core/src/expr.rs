@@ -12,7 +12,7 @@
 //! [`Width`], and the two interpretation-dependent operations — right shift and
 //! division/remainder — use the active [`Signedness`].
 
-use crate::parse::{parse_literal, ParseError};
+use crate::parse::{parse_literal_radix, ParseError};
 use crate::value::{Signedness, Value, Width};
 use std::fmt;
 
@@ -97,7 +97,27 @@ enum Token {
     Comma,
 }
 
-fn tokenize(input: &str) -> Result<Vec<Token>, EvalError> {
+/// Decide whether a word run (letters/digits/underscores) is a number literal
+/// or an identifier, given the default `radix` for bare digits.
+///
+/// A run starting with a digit is always a number (decimal stays decimal;
+/// explicit `0x`/`0b`/`0o` prefixes are handled by `parse_literal_radix`). A
+/// run starting with a letter is a number only when the field's radix is
+/// non-decimal *and* every character is a valid digit in that radix — this is
+/// what lets bare hex like `DEAD` parse as base-16 while `sqrt`/`ans` stay
+/// identifiers. No integer function or constant name is spelled with only
+/// `[0-9a-f]`, so the two never collide.
+fn is_number_token(text: &str, radix: u32) -> bool {
+    if text.as_bytes()[0].is_ascii_digit() {
+        return true;
+    }
+    radix != 10
+        && text
+            .chars()
+            .all(|c| c == '_' || c.to_digit(radix).is_some())
+}
+
+fn tokenize(input: &str, radix: u32) -> Result<Vec<Token>, EvalError> {
     let chars: Vec<char> = input.chars().collect();
     let mut tokens = Vec::new();
     let mut i = 0;
@@ -105,24 +125,20 @@ fn tokenize(input: &str) -> Result<Vec<Token>, EvalError> {
         let c = chars[i];
         match c {
             c if c.is_whitespace() => i += 1,
-            // A number starts with a digit; consume following alphanumerics and
-            // underscores (this captures `0xDEAD`, `0b10`, `1_000`, etc).
-            c if c.is_ascii_digit() => {
+            // A word run — digits, letters, and underscores. It is either a
+            // number (`0xDEAD`, `1_000`, or bare `DEAD` in the hex field) or an
+            // identifier (`ans`, `sqrt`); `is_number_token` decides which.
+            c if c.is_ascii_alphanumeric() => {
                 let start = i;
                 while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
                     i += 1;
                 }
                 let text: String = chars[start..i].iter().collect();
-                tokens.push(Token::Num(parse_literal(&text)?));
-            }
-            // An identifier starts with a letter (e.g. `ans`).
-            c if c.is_ascii_alphabetic() => {
-                let start = i;
-                while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
-                    i += 1;
+                if is_number_token(&text, radix) {
+                    tokens.push(Token::Num(parse_literal_radix(&text, radix)?));
+                } else {
+                    tokens.push(Token::Ident(text));
                 }
-                let text: String = chars[start..i].iter().collect();
-                tokens.push(Token::Ident(text));
             }
             '+' => {
                 tokens.push(Token::Plus);
@@ -390,8 +406,23 @@ impl<'a> Parser<'a> {
 
 /// Evaluate `input` to a [`Value`] of the given width, using `sign` for
 /// decimal/shift interpretation and `ans` as the value of the `ans` identifier.
+/// Bare numeric literals are interpreted as decimal.
 pub fn eval(input: &str, width: Width, sign: Signedness, ans: Value) -> Result<Value, EvalError> {
-    let tokens = tokenize(input)?;
+    eval_radix(input, 10, width, sign, ans)
+}
+
+/// Like [`eval`], but bare (unprefixed) numeric literals are interpreted in
+/// `radix` — so an expression typed into the hex/bin/oct current-value field
+/// evaluates in that field's base (`DEAD & 0xF0` in hex, `1<<3` in binary).
+/// Explicit `0x`/`0b`/`0o` prefixes still override the default.
+pub fn eval_radix(
+    input: &str,
+    radix: u32,
+    width: Width,
+    sign: Signedness,
+    ans: Value,
+) -> Result<Value, EvalError> {
+    let tokens = tokenize(input, radix)?;
     if tokens.is_empty() {
         return Err(EvalError::UnexpectedEof);
     }
@@ -659,19 +690,13 @@ mod tests {
     fn arithmetic_div_unsigned() {
         assert_eq!(eval32("10 / 2").unwrap(), 5);
         assert_eq!(eval32("10 / 3").unwrap(), 3); // truncates
-        assert_eq!(eval32("1 / 2").unwrap(), 0);  // truncates to zero
+        assert_eq!(eval32("1 / 2").unwrap(), 0); // truncates to zero
     }
 
     #[test]
     fn arithmetic_div_signed() {
         let signed32 = |s: &str| {
-            eval(
-                s,
-                w(32),
-                Signedness::Signed,
-                Value::new(0, w(32)),
-            )
-            .map(|v| v.raw() as i32)
+            eval(s, w(32), Signedness::Signed, Value::new(0, w(32))).map(|v| v.raw() as i32)
         };
         assert_eq!(signed32("10 / 2").unwrap(), 5);
         assert_eq!(signed32("-10 / 2").unwrap(), -5);
@@ -689,13 +714,7 @@ mod tests {
     #[test]
     fn arithmetic_rem_signed() {
         let signed32 = |s: &str| {
-            eval(
-                s,
-                w(32),
-                Signedness::Signed,
-                Value::new(0, w(32)),
-            )
-            .map(|v| v.raw() as i32)
+            eval(s, w(32), Signedness::Signed, Value::new(0, w(32))).map(|v| v.raw() as i32)
         };
         // Remainder follows dividend sign in Rust.
         assert_eq!(signed32("17 % 5").unwrap(), 2);
@@ -804,15 +823,8 @@ mod tests {
 
     #[test]
     fn function_abs() {
-        let signed32 = |s: &str| {
-            eval(
-                s,
-                w(32),
-                Signedness::Signed,
-                Value::new(0, w(32)),
-            )
-            .map(|v| v.raw())
-        };
+        let signed32 =
+            |s: &str| eval(s, w(32), Signedness::Signed, Value::new(0, w(32))).map(|v| v.raw());
         assert_eq!(signed32("abs(0)").unwrap(), 0);
         assert_eq!(signed32("abs(42)").unwrap(), 42);
         assert_eq!(signed32("abs(-42)").unwrap(), 42);
@@ -823,13 +835,7 @@ mod tests {
     #[test]
     fn function_sign() {
         let signed32 = |s: &str| {
-            eval(
-                s,
-                w(32),
-                Signedness::Signed,
-                Value::new(0, w(32)),
-            )
-            .map(|v| v.raw() as i32)
+            eval(s, w(32), Signedness::Signed, Value::new(0, w(32))).map(|v| v.raw() as i32)
         };
         assert_eq!(signed32("sign(0)").unwrap(), 0);
         assert_eq!(signed32("sign(42)").unwrap(), 1);
@@ -913,6 +919,56 @@ mod tests {
         assert!(matches!(
             eval_float("1 << 2", 0.0),
             Err(EvalError::BitwiseInFloatMode('<'))
+        ));
+    }
+
+    fn eval16_radix(input: &str, radix: u32) -> Result<u128, EvalError> {
+        eval_radix(
+            input,
+            radix,
+            w(32),
+            Signedness::Unsigned,
+            Value::new(0, w(32)),
+        )
+        .map(|v| v.raw())
+    }
+
+    #[test]
+    fn radix_aware_bare_literals() {
+        // Bare digits/letters take the field's radix.
+        assert_eq!(eval16_radix("DEAD", 16).unwrap(), 0xDEAD);
+        assert_eq!(eval16_radix("10", 16).unwrap(), 16);
+        assert_eq!(eval16_radix("ff & 0f", 16).unwrap(), 0x0F);
+        assert_eq!(eval16_radix("dead_beef", 16).unwrap(), 0xDEAD_BEEF);
+        assert_eq!(eval16_radix("1010 | 0101", 2).unwrap(), 0b1111);
+        assert_eq!(eval16_radix("17", 8).unwrap(), 0o17);
+        // Operators and functions still work in a non-decimal field.
+        assert_eq!(eval16_radix("1<<3", 16).unwrap(), 8);
+        assert_eq!(eval16_radix("ff + 1", 16).unwrap(), 0x100);
+    }
+
+    #[test]
+    fn radix_aware_prefixes_and_idents() {
+        // An explicit prefix overrides the field radix.
+        assert_eq!(eval16_radix("0b1010", 16).unwrap(), 10);
+        assert_eq!(eval16_radix("0o17 + 1", 16).unwrap(), 0x10);
+        // Function names and `ans` are still identifiers in hex mode (they
+        // contain letters outside `[0-9a-f]`), so they don't parse as numbers.
+        assert_eq!(eval16_radix("clog2(400)", 16).unwrap(), 10); // 0x400 == 1024
+        assert!(matches!(
+            eval16_radix("xyz", 16),
+            Err(EvalError::UnknownIdent(_))
+        ));
+    }
+
+    #[test]
+    fn decimal_radix_unchanged() {
+        // radix 10 must behave exactly like plain `eval`.
+        assert_eq!(eval16_radix("10", 10).unwrap(), 10);
+        assert_eq!(eval16_radix("0xFF", 10).unwrap(), 255);
+        assert!(matches!(
+            eval16_radix("DEAD", 10),
+            Err(EvalError::UnknownIdent(_))
         ));
     }
 }
