@@ -1,19 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <!-- Background -->
   <rect width="512" height="512" rx="96" fill="#0F1115"/>
-
-  <!-- 2×2 bit grid, checkerboard (1 0 / 0 1) -->
-  <!-- Cell size 160px, gap 16px, total grid 336px, offset 88px to center -->
-
-  <!-- top-left: ON -->
-  <rect x="88"  y="88"  width="160" height="160" rx="24" fill="#818CF8"/>
-
-  <!-- top-right: OFF -->
-  <rect x="264" y="88"  width="160" height="160" rx="24" fill="none" stroke="#818CF8" stroke-width="10" opacity="0.35"/>
-
-  <!-- bottom-left: OFF -->
-  <rect x="88"  y="264" width="160" height="160" rx="24" fill="none" stroke="#818CF8" stroke-width="10" opacity="0.35"/>
-
-  <!-- bottom-right: ON -->
-  <rect x="264" y="264" width="160" height="160" rx="24" fill="#818CF8"/>
+  <!-- Frame -->
+  <rect x="60" y="88" width="392" height="336" rx="30" fill="none" stroke="#818CF8" stroke-width="22"/>
+  <!-- Rods -->
+  <line x1="82" y1="166" x2="430" y2="166" stroke="#48528C" stroke-width="8" stroke-linecap="round"/>
+  <line x1="82" y1="256" x2="430" y2="256" stroke="#48528C" stroke-width="8" stroke-linecap="round"/>
+  <line x1="82" y1="346" x2="430" y2="346" stroke="#48528C" stroke-width="8" stroke-linecap="round"/>
+  <!-- Beads (colors mixed across rows; dark outline + soft highlight) -->
+  <circle cx="124" cy="166" r="36" fill="#818CF8" stroke="#0F1115" stroke-width="3"/>
+  <circle cx="113" cy="155" r="12" fill="#FFFFFF" opacity="0.45"/>
+  <circle cx="308" cy="166" r="36" fill="#FBBF24" stroke="#0F1115" stroke-width="3"/>
+  <circle cx="297" cy="155" r="12" fill="#FFFFFF" opacity="0.45"/>
+  <circle cx="388" cy="166" r="36" fill="#FB7185" stroke="#0F1115" stroke-width="3"/>
+  <circle cx="377" cy="155" r="12" fill="#FFFFFF" opacity="0.45"/>
+  <circle cx="124" cy="256" r="36" fill="#34D399" stroke="#0F1115" stroke-width="3"/>
+  <circle cx="113" cy="245" r="12" fill="#FFFFFF" opacity="0.45"/>
+  <circle cx="204" cy="256" r="36" fill="#FB7185" stroke="#0F1115" stroke-width="3"/>
+  <circle cx="193" cy="245" r="12" fill="#FFFFFF" opacity="0.45"/>
+  <circle cx="388" cy="256" r="36" fill="#818CF8" stroke="#0F1115" stroke-width="3"/>
+  <circle cx="377" cy="245" r="12" fill="#FFFFFF" opacity="0.45"/>
+  <circle cx="124" cy="346" r="36" fill="#FBBF24" stroke="#0F1115" stroke-width="3"/>
+  <circle cx="113" cy="335" r="12" fill="#FFFFFF" opacity="0.45"/>
+  <circle cx="308" cy="346" r="36" fill="#34D399" stroke="#0F1115" stroke-width="3"/>
+  <circle cx="297" cy="335" r="12" fill="#FFFFFF" opacity="0.45"/>
+  <circle cx="388" cy="346" r="36" fill="#FB7185" stroke="#0F1115" stroke-width="3"/>
+  <circle cx="377" cy="335" r="12" fill="#FFFFFF" opacity="0.45"/>
 </svg>
