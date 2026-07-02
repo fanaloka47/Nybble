@@ -553,14 +553,21 @@ impl App {
             }
             if submit_via_enter {
                 resp.surrender_focus();
-                self.refresh(None);
-                self.flash_until = ui.input(|i| i.time) + 0.8;
-                self.value_just_changed = false; // already flashing, don't double-trigger
+                // Evaluate the field as an expression on commit. On success the
+                // value updates and we re-render; on error the typed text is
+                // left in place with the message in the status line.
+                if self.commit_field_expr(field) {
+                    self.refresh(None);
+                    self.flash_until = ui.input(|i| i.time) + 0.8;
+                    self.value_just_changed = false; // already flashing, don't double-trigger
+                }
             } else if lost_focus {
                 // Re-render the field from the canonical value so group
                 // separators (dropped while the field was focused, to avoid
                 // disrupting typing) reappear once editing ends.
-                self.refresh(None);
+                if self.commit_field_expr(field) {
+                    self.refresh(None);
+                }
             }
             if copy_clicked {
                 let text = self.settings.copy.apply(label, &buf_text);

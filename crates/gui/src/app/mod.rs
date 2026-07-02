@@ -6,7 +6,9 @@
 //! history all read from it. Signedness only changes the decimal rendering and
 //! the meaning of `>>` and `/`.
 
-use nybble_core::{eval, eval_float, f64_to_value, fixed, parse_base, Signedness, Value, Width};
+use nybble_core::{
+    eval, eval_float, eval_radix, f64_to_value, fixed, parse_base, Signedness, Value, Width,
+};
 
 use crate::settings::Settings;
 use crate::theme::{self, ThemeMode};
@@ -655,14 +657,15 @@ impl App {
         }
         let text = self.buffer_mut(field).clone();
         let radix = field_radix(field);
-        match parse_base(&text, radix, self.width, self.sign) {
-            Ok(v) => {
-                self.value = v;
-                self.status = None;
-                self.invalidate_expr();
-                self.refresh(Some(field));
-            }
-            Err(e) => self.error(e),
+        // Live feedback while typing accepts plain literals only. A failed parse
+        // is left silent: the text may be a half-typed expression (`1<<`) that
+        // only makes sense once committed, so we don't flash an error per key.
+        // Expressions are evaluated at commit time via `commit_field_expr`.
+        if let Ok(v) = parse_base(&text, radix, self.width, self.sign) {
+            self.value = v;
+            self.status = None;
+            self.invalidate_expr();
+            self.refresh(Some(field));
         }
     }
 
@@ -675,14 +678,13 @@ impl App {
                 if text.is_empty() {
                     return;
                 }
-                match text.parse::<f64>() {
-                    Ok(x) => {
-                        self.float_value = x;
-                        self.status = None;
-                        self.invalidate_expr();
-                        self.refresh(Some(field));
-                    }
-                    Err(_) => self.error("invalid real number"),
+                // Live: plain reals only, silent on failure (a half-typed
+                // `sqrt(` is evaluated at commit via `commit_field_expr`).
+                if let Ok(x) = text.parse::<f64>() {
+                    self.float_value = x;
+                    self.status = None;
+                    self.invalidate_expr();
+                    self.refresh(Some(field));
                 }
             }
             Field::Hex | Field::Bin | Field::Oct => {
@@ -700,6 +702,54 @@ impl App {
                 }
             }
             Field::Fixed => unreachable!("fixed field hidden in float mode"),
+        }
+    }
+
+    /// Evaluate a current-value field as a full expression when the user commits
+    /// it (Enter or blur). Plain literals were already applied live in
+    /// `on_field_edit`; this additionally accepts operators and named functions,
+    /// interpreting bare numbers in the field's own radix (so `DEAD & 0xF0`
+    /// works in the hex field and `1<<3` in binary). Returns `true` when the
+    /// caller should re-render the field from the canonical value; on an invalid
+    /// expression it returns `false`, leaves the value untouched, and shows the
+    /// error in the status line so the user's text is preserved for fixing.
+    fn commit_field_expr(&mut self, field: Field) -> bool {
+        // Drop the decimal group separator (`'`); the evaluator handles `_`
+        // separators and whitespace itself.
+        let text: String = self.buffer_mut(field).replace('\'', "");
+        if text.trim().is_empty() {
+            return true;
+        }
+        if self.is_float_mode() {
+            // Only the decimal field carries a real-valued expression; the
+            // hex/bin/oct fields are raw f64 bit patterns, applied live.
+            if field != Field::Dec {
+                return true;
+            }
+            return match eval_float(&text, self.float_value) {
+                Ok(x) => {
+                    self.float_value = x;
+                    self.status = None;
+                    self.invalidate_expr();
+                    true
+                }
+                Err(e) => {
+                    self.error(format!("Invalid expression: {e}"));
+                    false
+                }
+            };
+        }
+        match eval_radix(&text, field_radix(field), self.width, self.sign, self.value) {
+            Ok(v) => {
+                self.value = v;
+                self.status = None;
+                self.invalidate_expr();
+                true
+            }
+            Err(e) => {
+                self.error(format!("Invalid expression: {e}"));
+                false
+            }
         }
     }
 
@@ -1299,11 +1349,38 @@ mod tests {
     }
 
     #[test]
-    fn on_field_edit_invalid_input_sets_status_error() {
+    fn on_field_edit_invalid_input_stays_silent() {
+        // Live editing never flashes an error: a half-typed value or expression
+        // is only validated at commit time. `on_field_edit` leaves both the
+        // value and the status untouched when the buffer doesn't parse.
         let mut app = App::for_test();
+        let before = app.value.raw();
         app.hex = "ZZZZ".to_string();
         app.on_field_edit(Field::Hex);
+        assert!(app.status.is_none());
+        assert_eq!(app.value.raw(), before);
+    }
+
+    #[test]
+    fn commit_field_expr_invalid_sets_status_error() {
+        let mut app = App::for_test();
+        app.hex = "ZZZZ".to_string();
+        let committed = app.commit_field_expr(Field::Hex);
+        assert!(!committed);
         assert!(app.status.is_some());
+    }
+
+    #[test]
+    fn commit_field_expr_evaluates_in_field_radix() {
+        let mut app = App::for_test();
+        // Bare hex plus an operator: `DEAD & 0xF0` == 0xA0.
+        app.hex = "DEAD & 0xF0".to_string();
+        assert!(app.commit_field_expr(Field::Hex));
+        assert_eq!(app.value.raw(), 0xA0);
+        // `10` in the hex field is sixteen, not ten.
+        app.hex = "10".to_string();
+        assert!(app.commit_field_expr(Field::Hex));
+        assert_eq!(app.value.raw(), 16);
     }
 
     #[test]
