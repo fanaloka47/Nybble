@@ -14,6 +14,14 @@ pub struct ReleaseNotes {
 /// `crates/gui/Cargo.toml`'s `version` to match — each time you cut a release.
 pub const ENTRIES: &[ReleaseNotes] = &[
     ReleaseNotes {
+        version: "1.4.0",
+        items: &[
+            "Your calculation history now persists across sessions: it's saved when you close the app and restored the next time you open it, keeping the 50 most recent entries. The current value still starts fresh on each launch.",
+            "The integer/float toggle is now a compact pill directly under the Calculator tab.",
+            "In float mode, the HEX/BIN/OCT fields are greyed out and point to a new Interpret panel that decodes the IEEE-754 bit pattern of the current value.",
+        ],
+    },
+    ReleaseNotes {
         version: "1.3.0",
         items: &[
             "Added a Batch convert tab: paste a whole list of numbers and convert them between bases at once, with a Copy all button.",
