@@ -382,6 +382,11 @@ impl App {
             .unwrap_or(true);
         let settings = storage.map(Settings::load).unwrap_or_default();
 
+        let history = storage
+            .and_then(|s| s.get_string("history"))
+            .map(|s| deserialize_history(&s))
+            .unwrap_or_default();
+
         // Show the "What's new" dialog once whenever the running binary's notes
         // haven't been seen yet: either the last-seen version differs from the
         // current one, or there is no stored version at all (a fresh install, or
@@ -421,7 +426,7 @@ impl App {
             oct: String::new(),
             fixed_input: String::new(),
             expr: String::new(),
-            history: Vec::new(),
+            history,
             history_base,
             expr_error: None,
             expr_focus_request: false,
@@ -811,7 +816,7 @@ impl App {
 
     fn push_history(&mut self, expr: String, result: HistoryResult) {
         self.history.push(HistoryEntry { expr, result });
-        const MAX_HISTORY: usize = 200;
+        const MAX_HISTORY: usize = 50;
         if self.history.len() > MAX_HISTORY {
             let excess = self.history.len() - MAX_HISTORY;
             self.history.drain(0..excess);
@@ -839,6 +844,72 @@ impl App {
         self.expr_error = None;
         self.status = None;
         self.refresh(None);
+    }
+}
+
+/// Serialize the history for persistence: one entry per line, fields separated
+/// by a unit separator (`\x1f`). The expression is stored last so it may contain
+/// any character except a newline (expression input is single-line). Integer
+/// results store raw/width/sign; float results store the `f64` bit pattern so the
+/// exact value — including NaN/inf — round-trips.
+fn serialize_history(history: &[HistoryEntry]) -> String {
+    history
+        .iter()
+        .map(|e| match e.result {
+            HistoryResult::Integer { value, sign } => format!(
+                "i\x1f{}\x1f{}\x1f{}\x1f{}",
+                value.raw(),
+                value.width().bits(),
+                match sign {
+                    Signedness::Unsigned => 'u',
+                    Signedness::Signed => 's',
+                },
+                e.expr,
+            ),
+            HistoryResult::Float(x) => format!("f\x1f{}\x1f{}", x.to_bits(), e.expr),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Parse the history back from [`serialize_history`]'s format. Malformed lines
+/// (e.g. from a corrupt store or a future format) are skipped rather than
+/// failing the whole load.
+fn deserialize_history(raw: &str) -> Vec<HistoryEntry> {
+    raw.lines().filter_map(parse_history_line).collect()
+}
+
+fn parse_history_line(line: &str) -> Option<HistoryEntry> {
+    let (kind, rest) = line.split_once('\x1f')?;
+    match kind {
+        "i" => {
+            // raw, width, sign, then the expression (which may itself contain
+            // the separator, so cap the split at four fields).
+            let mut parts = rest.splitn(4, '\x1f');
+            let raw: u128 = parts.next()?.parse().ok()?;
+            let width = Width::new(parts.next()?.parse().ok()?)?;
+            let sign = match parts.next()? {
+                "u" => Signedness::Unsigned,
+                "s" => Signedness::Signed,
+                _ => return None,
+            };
+            let expr = parts.next()?.to_owned();
+            Some(HistoryEntry {
+                expr,
+                result: HistoryResult::Integer {
+                    value: Value::new(raw, width),
+                    sign,
+                },
+            })
+        }
+        "f" => {
+            let (bits, expr) = rest.split_once('\x1f')?;
+            Some(HistoryEntry {
+                expr: expr.to_owned(),
+                result: HistoryResult::Float(f64::from_bits(bits.parse().ok()?)),
+            })
+        }
+        _ => None,
     }
 }
 
@@ -1080,6 +1151,7 @@ impl eframe::App for App {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         storage.set_string("theme_mode", self.theme_mode.key().to_owned());
         storage.set_string("history_base", self.history_base.key().to_owned());
+        storage.set_string("history", serialize_history(&self.history));
         storage.set_string("view_mode", self.view_mode.key().to_owned());
         storage.set_string("number_mode", self.number_mode.key().to_owned());
         storage.set_string("tab", self.tab.key().to_owned());
@@ -1329,6 +1401,58 @@ mod tests {
         };
         app.recall(entry);
         assert!(app.frac_bits <= 8);
+    }
+
+    // --- history persistence ---
+
+    #[test]
+    fn history_round_trips_through_serialization() {
+        let history = vec![
+            HistoryEntry {
+                expr: "0xFF & (1 << 3)".to_string(),
+                result: HistoryResult::Integer {
+                    value: Value::new(0xBEEF, w(16)),
+                    sign: Signedness::Signed,
+                },
+            },
+            HistoryEntry {
+                expr: "sqrt(2)".to_string(),
+                result: HistoryResult::Float(std::f64::consts::SQRT_2),
+            },
+        ];
+        let restored = deserialize_history(&serialize_history(&history));
+        assert_eq!(restored.len(), 2);
+        match restored[0].result {
+            HistoryResult::Integer { value, sign } => {
+                assert_eq!(restored[0].expr, "0xFF & (1 << 3)");
+                assert_eq!(value.raw(), 0xBEEF);
+                assert_eq!(value.width().bits(), 16);
+                assert_eq!(sign, Signedness::Signed);
+            }
+            _ => panic!("expected integer entry"),
+        }
+        match restored[1].result {
+            HistoryResult::Float(x) => {
+                assert_eq!(restored[1].expr, "sqrt(2)");
+                assert_eq!(x, std::f64::consts::SQRT_2);
+            }
+            _ => panic!("expected float entry"),
+        }
+    }
+
+    #[test]
+    fn history_serialization_handles_empty_and_malformed() {
+        assert!(deserialize_history("").is_empty());
+        // A garbage line is skipped, a valid one survives.
+        let serialized = serialize_history(&[HistoryEntry {
+            expr: "1".to_string(),
+            result: HistoryResult::Integer {
+                value: Value::new(1, w(8)),
+                sign: Signedness::Unsigned,
+            },
+        }]);
+        let mixed = format!("not a real line\n{serialized}");
+        assert_eq!(deserialize_history(&mixed).len(), 1);
     }
 
     // --- on_field_edit ---
