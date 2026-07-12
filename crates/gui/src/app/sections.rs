@@ -503,6 +503,10 @@ impl App {
                 continue;
             }
             let label = field_label(field);
+            // In float mode the base fields carry the IEEE-754 encoding, whose
+            // proper home is the Interpret section. Grey them out here — all but
+            // DEC, which is the float's natural readout — and redirect on hover.
+            let greyed = self.is_float_mode() && !matches!(field, Field::Dec);
             // The box is multiline so long values wrap, but it behaves like a
             // single field: Enter submits (defocusing) rather than inserting
             // a newline. Consume the key *before* the TextEdit sees it —
@@ -514,6 +518,9 @@ impl App {
             let (edit_changed, lost_focus, copy_clicked, send_clicked, buf_text, resp) = {
                 let buf = self.buffer_mut(field);
                 ui.horizontal_top(|ui| {
+                    if greyed {
+                        ui.disable();
+                    }
                     ui.add_sized(
                         [36.0, ui.spacing().interact_size.y],
                         egui::Label::new(egui::RichText::new(label).weak().monospace().small()),
@@ -529,6 +536,13 @@ impl App {
                                 .desired_rows(1)
                                 .margin(egui::vec2(8.0, 4.0)),
                         );
+                        let resp = if greyed {
+                            resp.on_disabled_hover_text(
+                                "In float mode the bit view lives in the Interpret section",
+                            )
+                        } else {
+                            resp
+                        };
                         if flash_t > 0.0 {
                             let accent = theme::accent(ui.ctx());
                             let alpha = (flash_t * 200.0) as u8;
