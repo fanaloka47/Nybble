@@ -68,77 +68,9 @@ impl App {
         let accent = theme::accent(ui.ctx());
         let on_accent = theme::on_accent(ui.ctx());
 
-        // Animate indicator toward target; keep repainting until settled.
-        let target = if self.is_float_mode() {
-            1.0_f32
-        } else {
-            0.0_f32
-        };
-        let dt = ui.input(|i| i.unstable_dt);
-        self.mode_toggle_anim += (target - self.mode_toggle_anim) * (14.0 * dt).min(1.0);
-        if (self.mode_toggle_anim - target).abs() > 0.001 {
-            ui.ctx().request_repaint();
-        }
-
-        // Section header row: "EXPRESSION" label left, pill toggle right.
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("EXPRESSION").weak().small());
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let h = 24.0_f32;
-                let w = 110.0_f32;
-                let r = (h / 2.0) as u8;
-                let rr = r as f32;
-                let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::click());
-                if resp.clicked() {
-                    let next = if self.is_float_mode() {
-                        NumberMode::Integer
-                    } else {
-                        NumberMode::Float
-                    };
-                    self.set_number_mode(next);
-                }
-                let painter = ui.painter();
-                let t = self.mode_toggle_anim;
-                let half = w / 2.0;
-                // Track
-                painter.rect_filled(
-                    rect,
-                    egui::CornerRadius::same(r),
-                    ui.visuals().widgets.inactive.bg_fill,
-                );
-                // Indicator slides; outer corners round as it reaches each edge.
-                let ind_x = rect.left() + t * half;
-                let ind_rect =
-                    egui::Rect::from_min_size(egui::pos2(ind_x, rect.top()), egui::vec2(half, h));
-                let left_r = (rr * (1.0 - 2.0 * t).max(0.0)).round() as u8;
-                let right_r = (rr * (2.0 * t - 1.0).max(0.0)).round() as u8;
-                let ind_corners = egui::CornerRadius {
-                    nw: left_r,
-                    sw: left_r,
-                    ne: right_r,
-                    se: right_r,
-                };
-                painter.rect_filled(ind_rect, ind_corners, accent);
-                // Labels
-                let font = egui::FontId::proportional(13.0);
-                let muted = ui.visuals().weak_text_color();
-                painter.text(
-                    egui::pos2(rect.left() + half / 2.0, rect.center().y),
-                    egui::Align2::CENTER_CENTER,
-                    "int",
-                    font.clone(),
-                    if t < 0.5 { on_accent } else { muted },
-                );
-                painter.text(
-                    egui::pos2(rect.left() + half * 1.5, rect.center().y),
-                    egui::Align2::CENTER_CENTER,
-                    "float",
-                    font,
-                    if t > 0.5 { on_accent } else { muted },
-                );
-            });
-        });
-        ui.add_space(4.0);
+        // The int/float toggle now lives under the Calculator tab (see
+        // `mode_toggle`), so the expression header is just a plain label.
+        ui.label(egui::RichText::new("EXPRESSION").weak().small());
         ui.add_space(6.0);
 
         // Hint and tooltip advertise the named functions, tailored to the mode:
@@ -223,6 +155,87 @@ impl App {
             ui.add_space(6.0);
             ui.colored_label(egui::Color32::from_rgb(229, 115, 115), err);
         }
+    }
+
+    /// Draws the int/float pill toggle filling `rect`, with `corners` rounding
+    /// on the track. A single click flips between integer and float mode; the
+    /// highlight indicator slides across, and each outer corner fades in the
+    /// track's rounding as the indicator reaches that edge. Rendered flush
+    /// under the Calculator tab so it reads as a dropdown attached to it.
+    pub(super) fn mode_toggle(
+        &mut self,
+        ui: &mut egui::Ui,
+        rect: egui::Rect,
+        corners: egui::CornerRadius,
+    ) {
+        // Match the selected mode's highlight to the selected tab button — both
+        // draw from egui's selection colors — so the pill reads as one piece
+        // with the Calculator tab it hangs from.
+        let sel_fill = ui.visuals().selection.bg_fill;
+        let sel_text = ui.visuals().selection.stroke.color;
+
+        // Animate the indicator toward its target; repaint until settled.
+        let target = if self.is_float_mode() { 1.0_f32 } else { 0.0_f32 };
+        let dt = ui.input(|i| i.unstable_dt);
+        self.mode_toggle_anim += (target - self.mode_toggle_anim) * (14.0 * dt).min(1.0);
+        if (self.mode_toggle_anim - target).abs() > 0.001 {
+            ui.ctx().request_repaint();
+        }
+
+        let resp = ui.interact(rect, ui.id().with("mode_toggle_pill"), egui::Sense::click());
+        if resp.clicked() {
+            let next = if self.is_float_mode() {
+                NumberMode::Integer
+            } else {
+                NumberMode::Float
+            };
+            self.set_number_mode(next);
+        }
+        if resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+
+        let painter = ui.painter();
+        let t = self.mode_toggle_anim;
+        let h = rect.height();
+        let half = rect.width() / 2.0;
+
+        // Track.
+        painter.rect_filled(rect, corners, ui.visuals().widgets.inactive.bg_fill);
+
+        // Indicator slides between the two halves; each outer corner fades in
+        // the track's rounding as the indicator reaches that edge.
+        let ind_x = rect.left() + t * half;
+        let ind_rect =
+            egui::Rect::from_min_size(egui::pos2(ind_x, rect.top()), egui::vec2(half, h));
+        let left_f = (1.0 - 2.0 * t).max(0.0);
+        let right_f = (2.0 * t - 1.0).max(0.0);
+        let scale = |r: u8, f: f32| (r as f32 * f).round() as u8;
+        let ind_corners = egui::CornerRadius {
+            nw: scale(corners.nw, left_f),
+            sw: scale(corners.sw, left_f),
+            ne: scale(corners.ne, right_f),
+            se: scale(corners.se, right_f),
+        };
+        painter.rect_filled(ind_rect, ind_corners, sel_fill);
+
+        // Labels.
+        let font = egui::FontId::proportional(12.0);
+        let muted = ui.visuals().weak_text_color();
+        painter.text(
+            egui::pos2(rect.left() + half / 2.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            "int",
+            font.clone(),
+            if t < 0.5 { sel_text } else { muted },
+        );
+        painter.text(
+            egui::pos2(rect.left() + half * 1.5, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            "float",
+            font,
+            if t > 0.5 { sel_text } else { muted },
+        );
     }
 
     fn history_panel(&mut self, ui: &mut egui::Ui) {
