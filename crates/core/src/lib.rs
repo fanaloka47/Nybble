@@ -14,6 +14,6 @@ pub mod parse;
 pub mod value;
 
 pub use expr::{eval, eval_radix, EvalError};
-pub use float::{eval_float, f64_to_value};
+pub use float::{eval_float, f64_to_value, FloatClass, Ieee754, F64_EXPONENT_BIAS};
 pub use parse::{parse_base, parse_literal, ParseError};
 pub use value::{Signedness, Value, Width};

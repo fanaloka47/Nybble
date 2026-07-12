@@ -30,6 +30,105 @@ pub fn f64_to_value(x: f64) -> Value {
     Value::new(x.to_bits() as u128, Width::new(64).unwrap())
 }
 
+/// The exponent bias of IEEE 754 `binary64`: the stored exponent field minus
+/// this gives the true power-of-two exponent of a normal number.
+pub const F64_EXPONENT_BIAS: i32 = 1023;
+
+/// How an IEEE 754 `binary64` bit pattern is classified. Determined jointly by
+/// the exponent and mantissa fields (see [`Ieee754::from_f64`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FloatClass {
+    /// Exponent and mantissa both zero (`±0`).
+    Zero,
+    /// Zero exponent, non-zero mantissa: no implicit leading `1`, gradual
+    /// underflow toward zero.
+    Subnormal,
+    /// The ordinary case: an implicit leading `1` and an unbiased exponent.
+    Normal,
+    /// All-ones exponent, zero mantissa (`±inf`).
+    Infinite,
+    /// All-ones exponent, non-zero mantissa (not-a-number).
+    Nan,
+}
+
+impl FloatClass {
+    /// A lowercase human label for the class, e.g. for a status chip.
+    pub fn label(self) -> &'static str {
+        match self {
+            FloatClass::Zero => "zero",
+            FloatClass::Subnormal => "subnormal",
+            FloatClass::Normal => "normal",
+            FloatClass::Infinite => "infinity",
+            FloatClass::Nan => "NaN",
+        }
+    }
+}
+
+/// The three raw fields of an IEEE 754 `binary64` value, plus its
+/// classification — everything needed to explain how the 64 bits encode a
+/// number. Purely a decomposition: no rounding or lossy conversion happens, so
+/// `sign‖exponent‖mantissa` reproduces the original bit pattern exactly.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Ieee754 {
+    /// Sign bit: `true` when the number is negative (bit 63 set).
+    pub negative: bool,
+    /// The raw 11-bit biased exponent field, `0..=2047`.
+    pub raw_exponent: u16,
+    /// The raw 52-bit trailing significand (fraction) field.
+    pub raw_mantissa: u64,
+    /// How this bit pattern is interpreted.
+    pub class: FloatClass,
+}
+
+impl Ieee754 {
+    /// Split an `f64` into its sign, exponent, and mantissa fields and classify
+    /// it. Lossless — the fields taken together are exactly `x.to_bits()`.
+    pub fn from_f64(x: f64) -> Self {
+        let bits = x.to_bits();
+        let negative = bits >> 63 != 0;
+        let raw_exponent = ((bits >> 52) & 0x7FF) as u16;
+        let raw_mantissa = bits & 0x000F_FFFF_FFFF_FFFF;
+        let class = match (raw_exponent, raw_mantissa) {
+            (0, 0) => FloatClass::Zero,
+            (0, _) => FloatClass::Subnormal,
+            (0x7FF, 0) => FloatClass::Infinite,
+            (0x7FF, _) => FloatClass::Nan,
+            _ => FloatClass::Normal,
+        };
+        Self {
+            negative,
+            raw_exponent,
+            raw_mantissa,
+            class,
+        }
+    }
+
+    /// The true power-of-two exponent (the biased field minus the bias, with
+    /// subnormals sharing the smallest normal exponent). `None` for zero,
+    /// infinity, and NaN, where no scale applies.
+    pub fn unbiased_exponent(self) -> Option<i32> {
+        match self.class {
+            FloatClass::Normal => Some(self.raw_exponent as i32 - F64_EXPONENT_BIAS),
+            FloatClass::Subnormal => Some(1 - F64_EXPONENT_BIAS),
+            _ => None,
+        }
+    }
+
+    /// The significand as a real number: `1.f` for normal values (implicit
+    /// leading `1`), `0.f` for subnormals, `0.0` for zero. `None` for infinity
+    /// and NaN. Multiplying this by `2^unbiased_exponent` reconstructs the
+    /// magnitude.
+    pub fn significand(self) -> Option<f64> {
+        const SCALE: f64 = (1u64 << 52) as f64;
+        match self.class {
+            FloatClass::Zero => Some(0.0),
+            FloatClass::Subnormal => Some(self.raw_mantissa as f64 / SCALE),
+            FloatClass::Normal => Some(1.0 + self.raw_mantissa as f64 / SCALE),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum Token {
     Num(f64),
@@ -510,6 +609,72 @@ mod tests {
     fn f64_bit_pattern() {
         assert_eq!(f64_to_value(1.0).to_hex(), "3FF0_0000_0000_0000");
         assert_eq!(f64_to_value(0.0).to_hex(), "0000_0000_0000_0000");
+    }
+
+    #[test]
+    fn ieee_normal_decomposition() {
+        // 1.0 = +1.0 × 2^0: exponent field is the bias, mantissa is zero.
+        let d = Ieee754::from_f64(1.0);
+        assert_eq!(d.class, FloatClass::Normal);
+        assert!(!d.negative);
+        assert_eq!(d.raw_exponent, 1023);
+        assert_eq!(d.raw_mantissa, 0);
+        assert_eq!(d.unbiased_exponent(), Some(0));
+        assert_eq!(d.significand(), Some(1.0));
+
+        // -1.5 = -1.5 × 2^0: sign set, top mantissa bit is the 0.5.
+        let d = Ieee754::from_f64(-1.5);
+        assert_eq!(d.class, FloatClass::Normal);
+        assert!(d.negative);
+        assert_eq!(d.raw_exponent, 1023);
+        assert_eq!(d.raw_mantissa, 1u64 << 51);
+        assert_eq!(d.significand(), Some(1.5));
+
+        // 8.0 = 1.0 × 2^3.
+        let d = Ieee754::from_f64(8.0);
+        assert_eq!(d.unbiased_exponent(), Some(3));
+        assert_eq!(d.significand(), Some(1.0));
+    }
+
+    #[test]
+    fn ieee_reconstructs_magnitude() {
+        // significand × 2^exponent recovers the original magnitude.
+        for x in [1.0, 3.5, 1234.5, 0.15625, 2.0_f64.powi(-40)] {
+            let d = Ieee754::from_f64(x);
+            let sig = d.significand().unwrap();
+            let exp = d.unbiased_exponent().unwrap();
+            assert_eq!(sig * 2.0_f64.powi(exp), x);
+        }
+    }
+
+    #[test]
+    fn ieee_specials_and_subnormal() {
+        let zero = Ieee754::from_f64(0.0);
+        assert_eq!(zero.class, FloatClass::Zero);
+        assert_eq!(zero.unbiased_exponent(), None);
+        assert_eq!(zero.significand(), Some(0.0));
+
+        let neg_zero = Ieee754::from_f64(-0.0);
+        assert_eq!(neg_zero.class, FloatClass::Zero);
+        assert!(neg_zero.negative);
+
+        let inf = Ieee754::from_f64(f64::INFINITY);
+        assert_eq!(inf.class, FloatClass::Infinite);
+        assert_eq!(inf.raw_exponent, 0x7FF);
+        assert_eq!(inf.raw_mantissa, 0);
+        assert_eq!(inf.significand(), None);
+
+        let nan = Ieee754::from_f64(f64::NAN);
+        assert_eq!(nan.class, FloatClass::Nan);
+        assert_eq!(nan.raw_exponent, 0x7FF);
+        assert_ne!(nan.raw_mantissa, 0);
+
+        // The smallest positive subnormal: mantissa = 1, no implicit leading 1.
+        let sub = Ieee754::from_f64(f64::from_bits(1));
+        assert_eq!(sub.class, FloatClass::Subnormal);
+        assert_eq!(sub.raw_exponent, 0);
+        assert_eq!(sub.raw_mantissa, 1);
+        assert_eq!(sub.unbiased_exponent(), Some(-1022));
     }
 
     fn ev(s: &str) -> f64 {

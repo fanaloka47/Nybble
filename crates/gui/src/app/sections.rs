@@ -3,7 +3,7 @@
 use super::{App, Field, HistoryBase, HistoryResult, NumberMode, SettingsTab};
 use crate::settings::{CopyOptions, Panel};
 use crate::{theme, widgets};
-use nybble_core::{f64_to_value, Signedness, Value};
+use nybble_core::{f64_to_value, FloatClass, Ieee754, Signedness, Value, F64_EXPONENT_BIAS};
 
 impl App {
     pub(super) fn section(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
@@ -441,9 +441,7 @@ impl App {
         section_label(ui, "INTERPRET");
 
         if self.is_float_mode() {
-            ui.label(
-                egui::RichText::new("Fixed-point and bit slicer apply to integer mode.").weak(),
-            );
+            self.ieee754(ui);
             return;
         }
 
@@ -610,6 +608,97 @@ impl App {
             }
             ui.add_space(4.0);
         }
+    }
+
+    /// IEEE-754 decode (float mode's counterpart to the fixed-point view):
+    /// shows how the current `f64`'s 64 bits split into sign, exponent, and
+    /// mantissa, then reconstructs the value those fields encode.
+    fn ieee754(&mut self, ui: &mut egui::Ui) {
+        let x = self.float_value;
+        let d = Ieee754::from_f64(x);
+        let bits = x.to_bits();
+        let accent = theme::accent(ui.ctx());
+        let strong = ui.visuals().strong_text_color();
+        let weak = ui.visuals().weak_text_color();
+        let text = ui.visuals().text_color();
+
+        // Header: "IEEE-754" left, the class (normal / subnormal / …) right.
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("IEEE-754").weak());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.monospace(egui::RichText::new(d.class.label()).color(accent));
+            });
+        });
+        ui.add_space(6.0);
+
+        // The 64-bit pattern, coloured by field — sign | exponent | mantissa,
+        // MSB→LSB — wrapping to the panel width. Field colours match the row
+        // labels below so the two read together.
+        let font = egui::FontId::monospace(13.0);
+        let mut job = egui::text::LayoutJob::default();
+        job.wrap.max_width = ui.available_width();
+        let mut span = |s: &str, color: egui::Color32| {
+            job.append(
+                s,
+                0.0,
+                egui::TextFormat {
+                    font_id: font.clone(),
+                    color,
+                    ..Default::default()
+                },
+            );
+        };
+        span(&format!("{}", bits >> 63), strong);
+        span(" ", weak);
+        span(&format!("{:011b}", d.raw_exponent), accent);
+        span(" ", weak);
+        span(&format!("{:052b}", d.raw_mantissa), weak);
+        ui.label(job);
+        ui.add_space(8.0);
+
+        // Field-by-field interpretation.
+        ieee_row(
+            ui,
+            "sign",
+            strong,
+            format!(
+                "{}   {}",
+                bits >> 63,
+                if d.negative { "negative" } else { "positive" }
+            ),
+            text,
+        );
+        let exp_detail = match d.class {
+            FloatClass::Normal | FloatClass::Subnormal => {
+                let e = d.unbiased_exponent().unwrap();
+                format!("{}   (2^{}, bias {})", d.raw_exponent, e, F64_EXPONENT_BIAS)
+            }
+            FloatClass::Zero => format!("{}   (all zero)", d.raw_exponent),
+            FloatClass::Infinite | FloatClass::Nan => format!("{}   (all ones)", d.raw_exponent),
+        };
+        ieee_row(ui, "exponent", accent, exp_detail, text);
+        ieee_row(
+            ui,
+            "mantissa",
+            weak,
+            format!("0x{:013X}", d.raw_mantissa),
+            text,
+        );
+
+        // The reconstructed meaning: significand · 2^exponent, or the special.
+        let sign = if d.negative { "-" } else { "+" };
+        let meaning = match d.class {
+            FloatClass::Normal | FloatClass::Subnormal => {
+                let sig = d.significand().unwrap();
+                let e = d.unbiased_exponent().unwrap();
+                format!("{sign}{sig} · 2^{e}")
+            }
+            FloatClass::Zero => format!("{sign}0"),
+            FloatClass::Infinite => format!("{sign}infinity"),
+            FloatClass::Nan => "NaN".to_string(),
+        };
+        ui.add_space(2.0);
+        ieee_row(ui, "value", text, meaning, accent);
     }
 
     fn fixed_point(&mut self, ui: &mut egui::Ui) {
@@ -1128,6 +1217,29 @@ impl App {
             ctx.request_repaint_after(std::time::Duration::from_secs_f64(remaining));
         }
     }
+}
+
+/// One labelled row of the IEEE-754 decode: a fixed-width field name (tinted to
+/// match its slice of the bit pattern above) and its monospace value.
+fn ieee_row(
+    ui: &mut egui::Ui,
+    key: &str,
+    key_color: egui::Color32,
+    value: String,
+    value_color: egui::Color32,
+) {
+    ui.horizontal(|ui| {
+        ui.add_sized(
+            [72.0, ui.spacing().interact_size.y],
+            egui::Label::new(
+                egui::RichText::new(key)
+                    .color(key_color)
+                    .monospace()
+                    .small(),
+            ),
+        );
+        ui.monospace(egui::RichText::new(value).color(value_color));
+    });
 }
 
 /// The four base fields, in display order.
