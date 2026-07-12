@@ -1039,29 +1039,7 @@ impl eframe::App for App {
             let mut calc_rect = None;
             ui.horizontal(|ui| {
                 for tab in AppTab::ALL {
-                    let selected = self.tab == tab;
-                    // The selected Calculator tab squares off its bottom corners
-                    // so the int/float toggle hanging below joins onto it as one
-                    // shape; every other tab renders as an ordinary pill.
-                    let resp = if tab == AppTab::Calculator && selected {
-                        let base = ui.visuals().widgets.inactive.corner_radius;
-                        ui.add(
-                            egui::Button::new(
-                                egui::RichText::new(tab.label())
-                                    .color(ui.visuals().selection.stroke.color),
-                            )
-                            .fill(ui.visuals().selection.bg_fill)
-                            .stroke(egui::Stroke::NONE)
-                            .corner_radius(egui::CornerRadius {
-                                nw: base.nw,
-                                ne: base.ne,
-                                sw: 0,
-                                se: 0,
-                            }),
-                        )
-                    } else {
-                        ui.selectable_label(selected, tab.label())
-                    };
+                    let resp = ui.selectable_label(self.tab == tab, tab.label());
                     if tab == AppTab::Calculator {
                         calc_rect = Some(resp.rect);
                     }
@@ -1071,29 +1049,19 @@ impl eframe::App for App {
                 }
             });
 
-            // The int/float toggle hangs directly under the Calculator tab,
-            // flush against its bottom edge like a dropdown — but a single
-            // click flips the mode. Anchored to the button's rect (rather than
-            // flowing with the layout's item spacing) so there is no gap. Only
-            // the calculator workspace has a number mode, so it is shown for
-            // that tab alone.
+            // The int/float toggle sits on its own row just below the
+            // Calculator tab — a self-contained rounded pill, aligned under the
+            // button but with a small gap so the two stay distinct. A single
+            // click flips the mode. Only the calculator workspace has a number
+            // mode, so it is shown for that tab alone.
             if self.tab == AppTab::Calculator {
                 if let Some(cr) = calc_rect {
                     let rect = egui::Rect::from_min_size(
-                        egui::pos2(cr.left(), cr.bottom()),
+                        egui::pos2(cr.left(), cr.bottom() + 4.0),
                         egui::vec2(cr.width(), 22.0),
                     );
                     ui.allocate_rect(rect, egui::Sense::hover());
-                    self.mode_toggle(
-                        ui,
-                        rect,
-                        egui::CornerRadius {
-                            nw: 0,
-                            ne: 0,
-                            sw: 6,
-                            se: 6,
-                        },
-                    );
+                    self.mode_toggle(ui, rect, egui::CornerRadius::same(11));
                 }
             }
             ui.add_space(8.0);
