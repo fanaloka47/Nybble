@@ -24,7 +24,7 @@ enum UpdateMsg {
     Available(String),
     UpToDate,
     Failed,
-    Applied,
+    Applied(crate::update::Applied),
 }
 
 /// The editable surfaces that show the current value. Used to skip refreshing
@@ -494,9 +494,24 @@ impl App {
             while let Ok(msg) = rx.try_recv() {
                 match msg {
                     UpdateMsg::Available(v) => self.update_available = Some(v),
-                    UpdateMsg::UpToDate | UpdateMsg::Failed => {}
-                    UpdateMsg::Applied => {
+                    UpdateMsg::UpToDate => {}
+                    // Clear `updating` so a failed attempt leaves the button
+                    // usable instead of stuck on "Updating…" forever.
+                    UpdateMsg::Failed => self.updating = false,
+                    UpdateMsg::Applied(crate::update::Applied::Restart) => {
                         crate::update::restart();
+                    }
+                    // An installer is running and wants our files free.
+                    UpdateMsg::Applied(crate::update::Applied::Exit) => {
+                        crate::update::quit();
+                    }
+                    // Nothing to install after all — the offer was stale (the
+                    // release was pulled, or it was a pre-release this channel
+                    // can't actually fetch). Withdraw it rather than restarting
+                    // into the same prompt.
+                    UpdateMsg::Applied(crate::update::Applied::NoChange) => {
+                        self.updating = false;
+                        self.update_available = None;
                     }
                 }
             }
@@ -509,7 +524,7 @@ impl App {
         self.updating = true;
         std::thread::spawn(move || {
             let msg = match crate::update::apply_update() {
-                Ok(_) => UpdateMsg::Applied,
+                Ok(applied) => UpdateMsg::Applied(applied),
                 Err(_) => UpdateMsg::Failed,
             };
             let _ = tx.send(msg);
@@ -1082,23 +1097,43 @@ impl eframe::App for App {
 
                     // Update banner / controls (right-to-left, so leftmost = last).
                     if let Some(ref v) = self.update_available.clone() {
+                        // The check itself is the same everywhere; only what we
+                        // can offer to *do* about it depends on how this build
+                        // was installed. See `update::UpdateStrategy`.
+                        let strategy = crate::update::strategy();
                         let label = if self.updating {
                             "Updating…".to_owned()
                         } else {
-                            format!("Update & restart (v{v})")
+                            strategy.button_label(v)
                         };
-                        if ui
-                            .add_enabled(
-                                !self.updating,
-                                egui::Button::new(
-                                    egui::RichText::new(label).color(theme::on_accent(ui.ctx())),
-                                )
-                                .fill(theme::accent(ui.ctx())),
+                        // A package-managed install can't act, so it gets a
+                        // plain button rather than an accented call to action.
+                        let button = if strategy.is_self_applying() {
+                            egui::Button::new(
+                                egui::RichText::new(label).color(theme::on_accent(ui.ctx())),
                             )
-                            .on_hover_text("Download the new version and restart")
+                            .fill(theme::accent(ui.ctx()))
+                        } else {
+                            egui::Button::new(label)
+                        };
+                        let mut hover = strategy.hover_text().to_owned();
+                        // Only ever appended when PC_UPDATE_CHANNEL=beta, so
+                        // whoever opted in can confirm it took effect — and can
+                        // tell why they're being offered a release candidate.
+                        if crate::update::channel() == crate::update::Channel::Beta {
+                            hover.push_str("\n\nPre-release channel (PC_UPDATE_CHANNEL=beta)");
+                        }
+                        if ui
+                            .add_enabled(!self.updating, button)
+                            .on_hover_text(hover)
                             .clicked()
                         {
-                            self.spawn_apply_update(ui.ctx().clone());
+                            if strategy.is_self_applying() {
+                                self.spawn_apply_update(ui.ctx().clone());
+                            } else {
+                                ui.ctx()
+                                    .open_url(egui::OpenUrl::new_tab(crate::update::RELEASES_URL));
+                            }
                         }
                     } else if !self.updating
                         && self.update_rx.is_none()

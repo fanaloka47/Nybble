@@ -30,6 +30,10 @@ self_update = { version = "0.41", default-features = false, features = [
     "rustls",
     "compression-zip-deflate",
 ] }
+# Only for `reqwest::header` when downloading a release asset by hand (the MSI
+# and AppImage update paths). self_update already builds reqwest and doesn't
+# re-export it, so this is a direct edge to an existing dependency, not a new one.
+reqwest = { version = "0.12", default-features = false }
 
 # The x11 backend is Linux-only; keep it off Windows/macOS builds. Cargo unions
 # features for the same crate, so on Linux eframe still gets x11 as before.
