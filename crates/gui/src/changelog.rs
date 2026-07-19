@@ -14,6 +14,16 @@ pub struct ReleaseNotes {
 /// `crates/gui/Cargo.toml`'s `version` to match — each time you cut a release.
 pub const ENTRIES: &[ReleaseNotes] = &[
     ReleaseNotes {
+        version: "1.5.0",
+        items: &[
+            "Nybble now has real installers. On Windows there's an .msi that adds Start Menu and Add/Remove Programs entries; on Linux there's a .deb for Debian/Ubuntu and an AppImage that runs anywhere. The portable downloads are still there and still work exactly as before.",
+            "Your settings and history are shared across every version. Install the Windows or Linux package over a portable copy and everything you had is still there — and uninstalling never deletes it.",
+            "The update button now matches how you installed. Portable and AppImage builds update themselves as before; the Windows installer downloads and runs the new installer for you; a version installed through your Linux package manager points you at the download page instead of writing files behind your package manager's back.",
+            "Fixed: a failed update left the button stuck on \"Updating…\" until you restarted the app.",
+            "Fixed: when there was nothing new to install, the app would restart anyway and show the same update prompt again.",
+        ],
+    },
+    ReleaseNotes {
         version: "1.4.0",
         items: &[
             "Your calculation history now persists across sessions: it's saved when you close the app and restored the next time you open it, keeping the 50 most recent entries. The current value still starts fresh on each launch.",
