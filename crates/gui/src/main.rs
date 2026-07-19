@@ -40,7 +40,14 @@ fn main() -> eframe::Result<()> {
             // intended layout — with a height where the content starts to scroll.
             // Below this the bit grid and settings modal get cramped.
             .with_min_inner_size([420.0, 460.0])
-            .with_icon(icon),
+            .with_icon(icon)
+            // Pinned, not derived from the window title: this string is what
+            // eframe turns into the persistence path (`~/.local/share/nybble`,
+            // `%APPDATA%\Nybble\data`), so letting it follow the title would
+            // orphan everyone's saved settings the day the title changes. It
+            // also has to match `StartupWMClass` in the Linux .desktop file for
+            // the window to associate with its launcher icon.
+            .with_app_id("Nybble"),
         renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
