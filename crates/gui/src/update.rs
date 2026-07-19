@@ -343,22 +343,41 @@ fn run_installer(release: &Release) -> Res<()> {
     // msiexec, and relaunches on success only (`&&`). The path is unchanged by
     // the upgrade, so resolving it now is safe.
     let exe = std::env::current_exe()?;
-    let script = format!(
-        r#"msiexec /i "{}" /qb && start "" "{}""#,
-        dest.display(),
-        exe.display()
-    );
 
     let mut cmd = std::process::Command::new("cmd");
-    cmd.arg("/C").arg(script);
     {
+        use std::os::windows::process::CommandExt;
+        // raw_arg, not arg: see installer_command_line.
+        cmd.raw_arg(installer_command_line(&dest, &exe));
         // CREATE_NO_WINDOW: without it a console window flashes up behind the
         // installer progress bar.
-        use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000);
     }
     cmd.spawn()?;
     Ok(())
+}
+
+/// The raw `cmd.exe` command line that installs `msi` and then relaunches `exe`.
+///
+/// Returned pre-quoted for `raw_arg` because `Command::arg` would corrupt it.
+/// Rust escapes arguments using MSVC C runtime rules, which turn our inner
+/// quotes into `\"` — a convention `cmd.exe` does not implement. It passes the
+/// backslashes through literally, so msiexec receives a mangled path and
+/// reports that the package cannot be opened.
+///
+/// `/S` is what makes the nesting predictable: it tells cmd to strip exactly the
+/// outer quote pair and treat everything between as the command, instead of
+/// applying its usual quote-counting heuristics.
+///
+/// `start ""` needs its empty first argument — that slot is the window title,
+/// and without it `start` would consume the quoted executable path as the title
+/// and launch nothing.
+fn installer_command_line(msi: &Path, exe: &Path) -> String {
+    format!(
+        r#"/S /C "msiexec /i "{}" /qb && start "" "{}"""#,
+        msi.display(),
+        exe.display()
+    )
 }
 
 #[cfg(not(windows))]
@@ -520,6 +539,29 @@ mod tests {
         ]);
         let a = pick_asset(&r, "AppImage", |n| n.ends_with(".appimage")).unwrap();
         assert_eq!(a.name, "Nybble-9.9.9-x86_64.AppImage");
+    }
+
+    /// Both paths contain spaces in practice (`C:\Program Files\…`, and a temp
+    /// dir under a user name that may contain one), so the quoting is the whole
+    /// point. This asserts the exact string rather than parsing it, because the
+    /// bug it guards against was a subtly *different* string that still looked
+    /// plausible.
+    #[test]
+    fn installer_command_line_nests_quotes_for_cmd_not_for_msvc() {
+        let line = installer_command_line(
+            Path::new(r"C:\Users\a b\AppData\Local\Temp\Nybble-1.5.0-x64.msi"),
+            Path::new(r"C:\Program Files\Nybble\nybble.exe"),
+        );
+        assert_eq!(
+            line,
+            r#"/S /C "msiexec /i "C:\Users\a b\AppData\Local\Temp\Nybble-1.5.0-x64.msi" /qb && start "" "C:\Program Files\Nybble\nybble.exe"""#
+        );
+        // The regression itself: cmd.exe has no idea what \" means, so a
+        // backslash-escaped quote anywhere here means msiexec gets a broken path.
+        assert!(
+            !line.contains(r#"\""#),
+            "cmd.exe does not understand MSVC-style escaped quotes"
+        );
     }
 
     #[test]
