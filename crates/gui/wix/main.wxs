@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="windows-1252"?>
+<!--
+  Nybble MSI, built with `cargo wix -p nybble-gui`.
+
+  Committed rather than generated (`cargo wix init` would regenerate it with a
+  fresh UpgradeCode) because two GUIDs here must never change:
+
+    * UpgradeCode      — identifies "Nybble" across all versions. Change it and
+                         a new release installs *alongside* the old one instead
+                         of replacing it, leaving two entries in Add/Remove.
+    * Component GUIDs  — identify individual installed resources.
+
+  Deliberately absent: any RemoveFolder/RemoveFile touching %APPDATA%\Nybble.
+  Uninstalling must leave the user's settings and history behind, so that
+  reinstalling — or switching between the portable and installed builds — keeps
+  their data. See crates/gui/src/main.rs for the matching app id.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product
+        Id="*"
+        Name="Nybble"
+        UpgradeCode="3230516E-A38D-4133-8DC1-6C2A406B58B0"
+        Manufacturer="fanaloka47"
+        Language="1033"
+        Codepage="1252"
+        Version="$(var.Version)">
+
+        <Package Id="*"
+            Keywords="Installer"
+            Description="Nybble — a programmer's calculator for hardware engineers"
+            Manufacturer="fanaloka47"
+            InstallerVersion="450"
+            Languages="1033"
+            Compressed="yes"
+            InstallScope="perMachine"
+            SummaryCodepage="1252"/>
+
+        <!-- Replace any older Nybble in place. AllowSameVersionUpgrades keeps
+             re-running the same installer idempotent instead of erroring. -->
+        <MajorUpgrade
+            Schedule="afterInstallInitialize"
+            AllowSameVersionUpgrades="yes"
+            DowngradeErrorMessage="A newer version of Nybble is already installed. Uninstall it first to install this older version."/>
+
+        <Media Id="1" Cabinet="media1.cab" EmbedCab="yes" DiskPrompt="CD-ROM #1"/>
+        <Property Id="DiskPrompt" Value="Nybble Installation"/>
+
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFiles64Folder" Name="PFiles">
+                <Directory Id="APPLICATIONFOLDER" Name="Nybble">
+                    <Component Id="binary" Guid="01A273CB-80B6-46D0-B506-62AD855E9549" Win64="yes">
+                        <File
+                            Id="exe0"
+                            Name="nybble.exe"
+                            DiskId="1"
+                            Source="$(var.CargoTargetBinDir)\nybble.exe"
+                            KeyPath="yes"/>
+                    </Component>
+                    <Component Id="license" Guid="*" Win64="yes">
+                        <File Id="LicenseFile" Name="LICENSE.txt" DiskId="1"
+                              Source="..\..\LICENSE" KeyPath="yes"/>
+                    </Component>
+                </Directory>
+            </Directory>
+
+            <Directory Id="ProgramMenuFolder">
+                <Component Id="start_menu_shortcut" Guid="6FA334C8-BE81-4893-94D7-6B40EFEEF099" Win64="yes">
+                    <Shortcut Id="StartMenuShortcut"
+                        Name="Nybble"
+                        Description="A programmer's calculator for hardware engineers"
+                        Target="[APPLICATIONFOLDER]nybble.exe"
+                        WorkingDirectory="APPLICATIONFOLDER"/>
+                    <!-- A shortcut can't be its own KeyPath under a per-machine
+                         install, so anchor the component on a registry value. -->
+                    <RegistryValue Root="HKMU" Key="Software\fanaloka47\Nybble"
+                                   Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes"/>
+                </Component>
+            </Directory>
+
+            <Directory Id="DesktopFolder" Name="Desktop">
+                <Component Id="desktop_shortcut" Guid="3456B3FC-1447-45B9-A5BD-70DA82CADB3E" Win64="yes">
+                    <Shortcut Id="DesktopShortcut"
+                        Name="Nybble"
+                        Description="A programmer's calculator for hardware engineers"
+                        Target="[APPLICATIONFOLDER]nybble.exe"
+                        WorkingDirectory="APPLICATIONFOLDER"/>
+                    <RegistryValue Root="HKMU" Key="Software\fanaloka47\Nybble"
+                                   Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes"/>
+                </Component>
+            </Directory>
+        </Directory>
+
+        <Feature Id="Complete" Title="Nybble" Level="1"
+                 Description="The Nybble application." Display="expand"
+                 ConfigurableDirectory="APPLICATIONFOLDER" AllowAdvertise="no" Absent="disallow">
+            <ComponentRef Id="binary"/>
+            <ComponentRef Id="license"/>
+            <ComponentRef Id="start_menu_shortcut"/>
+
+            <!-- A nested feature rather than a checkbox: WixUI_FeatureTree
+                 already renders it as a deselectable node, so making it
+                 optional needs no custom dialog authoring. The single
+                 WIXUI_EXITDIALOGOPTIONALCHECKBOX slot is spent on "Launch". -->
+            <Feature Id="DesktopShortcutFeature" Title="Desktop shortcut" Level="1"
+                     Description="Place a Nybble shortcut on the desktop."
+                     AllowAdvertise="no">
+                <ComponentRef Id="desktop_shortcut"/>
+            </Feature>
+        </Feature>
+
+        <SetProperty Id="ARPINSTALLLOCATION" Value="[APPLICATIONFOLDER]" After="CostFinalize"/>
+        <Property Id="ARPPRODUCTICON" Value="ProductICO"/>
+        <Icon Id="ProductICO" SourceFile="..\..\assets\icon.ico"/>
+        <Property Id="ARPHELPLINK" Value="https://github.com/fanaloka47/nybble"/>
+        <Property Id="ARPURLINFOABOUT" Value="https://github.com/fanaloka47/nybble"/>
+
+        <!-- "Launch Nybble" on the final wizard page. This only covers the
+             interactive install; the in-app update runs msiexec with /qb (no
+             UI), so it chains its own relaunch — see run_installer() in
+             crates/gui/src/update.rs. -->
+        <Property Id="WixShellExecTarget" Value="[#exe0]"/>
+        <CustomAction Id="LaunchApplication" BinaryKey="WixCA" DllEntry="WixShellExec" Impersonate="yes"/>
+
+        <UI>
+            <UIRef Id="WixUI_FeatureTree"/>
+            <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction"
+                     Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed</Publish>
+        </UI>
+
+        <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch Nybble"/>
+        <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1"/>
+
+        <WixVariable Id="WixUILicenseRtf" Value="wix\License.rtf"/>
+    </Product>
+</Wix>

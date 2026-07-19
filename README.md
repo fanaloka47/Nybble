@@ -26,14 +26,36 @@ Tired of the Windows calculator ? Here is Nybble, a calculator targeted at peopl
 
 ## Download & install
 
-Grab the latest build from the [Releases page](https://github.com/fanaloka47/nybble/releases)
-— it's a single self-contained binary, no installer required.
+Grab the latest build from the [Releases page](https://github.com/fanaloka47/nybble/releases).
+Every flavor is the same app — pick whichever suits you.
 
-> On Windows the binary is unsigned, so the first launch shows a SmartScreen
-> "unknown publisher" prompt — choose **More info → Run anyway**.
+| Platform | Download | Notes |
+|---|---|---|
+| Windows | `Nybble-<ver>-x64.msi` | Installs to Program Files, with Start Menu and Add/Remove entries |
+| Windows (portable) | `nybble-x86_64-pc-windows-msvc.zip` | Unzip and run, no install |
+| Linux | `nybble_<ver>_amd64.deb` | Debian/Ubuntu/Mint/Pop!_OS; adds a launcher entry |
+| Linux (universal) | `Nybble-<ver>-x86_64.AppImage` | `chmod +x` and run on any distro |
+| Linux (portable) | `nybble-x86_64-unknown-linux-gnu.tar.gz` | Untar and run |
 
-Once installed, the app checks GitHub for newer releases on launch and offers a one-click
-**Update & restart**.
+> The Windows builds are unsigned, so the first launch (or the installer) shows a
+> SmartScreen "unknown publisher" prompt — choose **More info → Run anyway**.
+
+**Settings and history are shared across flavors.** They live in
+`%APPDATA%\Nybble` and `~/.local/share/nybble`, so installing the MSI over a
+portable copy keeps your history, and uninstalling never deletes it.
+
+### Updating
+
+The app checks GitHub for newer releases on launch. What it offers depends on
+how you installed it:
+
+- **Portable and AppImage** — one-click **Update & restart**; it replaces itself.
+- **MSI** — downloads the new installer and runs it; Windows asks to elevate,
+  then the app reopens.
+- **`.deb`** — tells you a version is available and links to the Releases page.
+  It never writes to `/usr/bin` behind your package manager's back.
+
+Linux builds use X11, so they run through XWayland on Wayland desktops.
 
 ## Build from source
 

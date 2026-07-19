@@ -31,6 +31,7 @@ cargo fmt && cargo clippy
 |------|--------|
 | `PC_SIZE=WIDTHxHEIGHT` | Override initial window size (reproduce layout bugs) |
 | `PC_DEBUG=1` | Dump layout decision + bit-grid geometry to stderr |
+| `PC_UPDATE_CHANNEL=beta` | Also offer GitHub pre-releases (default: stable only) |
 | `--features screenshot` + `EFRAME_SCREENSHOT_TO=/path.png` | Save screenshot and exit |
 
 ## Architecture — core (`crates/core/src/`)
@@ -125,6 +126,22 @@ To cut version `X.Y.Z`, produce a single **release commit** (the maintainer crea
    ```
 
 Left to the maintainer (do **not** do these automatically): `git tag vX.Y.Z`, push, and publish the matching GitHub release on `fanaloka47/nybble` — that release is what the in-app updater (`self_update`, `crates/gui/src/update.rs`) polls to offer the upgrade.
+
+### Release candidates
+
+Tag `vX.Y.Z-rc.N` and tick **"Set as a pre-release"** on the GitHub release. The
+stable channel resolves `/releases/latest`, which GitHub defines as the most
+recent non-draft, non-pre-release release, so ordinary users never see it.
+Testers opt in with `PC_UPDATE_CHANNEL=beta`.
+
+The pre-release checkbox is what provides that protection, not the tag name — a
+release candidate published as a *normal* release will be handed to everyone.
+
+Note this only holds for clients running ≥1.5.0. Builds at 1.4.0 and earlier
+check the unfiltered `/releases` list, so they will *display* an RC version in
+the update button. They can't install it (their download path resolves
+`/releases/latest`, which excludes pre-releases) but the label is wrong until
+they upgrade once. See `packaging/README.md` for the full sequence.
 
 ## Constraints
 

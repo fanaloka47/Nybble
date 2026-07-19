@@ -1,0 +1,48 @@
+.TH NYBBLE 1 "July 2026" "nybble 1.4.0" "User Commands"
+.SH NAME
+nybble \- programmer's calculator for hardware engineers
+.SH SYNOPSIS
+.B nybble
+.SH DESCRIPTION
+.B Nybble
+is a native desktop calculator for FPGA and hardware engineers. It shows one
+value in hexadecimal, decimal, binary and octal simultaneously, supports
+configurable bit widths (1\-128) and signedness, lets you toggle individual
+bits, and evaluates bitwise and arithmetic expressions.
+.PP
+Expressions support the usual arithmetic and bitwise operators, the
+.B **
+power operator, and named functions
+.RB ( sqrt ", " log2 ", " clog2 ", " gcd
+and others in integer mode; the full scientific set plus
+.BR pi ", " e " and " tau
+in float mode). The identifier
+.B ans
+refers to the current value.
+.PP
+Nybble takes no command line arguments; all interaction is through the GUI.
+.SH ENVIRONMENT
+.TP
+.B PC_SIZE=\fIWIDTH\fRx\fIHEIGHT\fR
+Override the initial window size. Useful for reproducing layout issues.
+.TP
+.B PC_DEBUG=1
+Dump layout decisions and bit\-grid geometry to standard error.
+.TP
+.B PC_UPDATE_CHANNEL=beta
+Also consider pre\-release builds when checking for updates. Unset (or any other
+value) means stable releases only. Pre\-releases are release candidates and may
+be unstable; there is no automatic way back to the stable channel short of
+reinstalling.
+.SH FILES
+.TP
+.I ~/.local/share/nybble/app.ron
+Settings and calculation history. Shared with the portable and AppImage builds,
+and deliberately preserved when the package is removed.
+.SH NOTES
+This build uses the X11 backend, so on Wayland desktops it runs through
+XWayland.
+.SH BUGS
+Report issues at https://github.com/fanaloka47/nybble/issues
+.SH SEE ALSO
+Project homepage: https://github.com/fanaloka47/nybble

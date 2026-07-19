@@ -2,39 +2,161 @@ name: release
 on:
   push:
     tags: ["v*"]
+  # Manual runs build every installer and upload them as workflow artifacts
+  # without creating a tag or a release. This is how you get a real .msi to
+  # install and test by hand — nothing is published and no user ever sees it.
+  workflow_dispatch:
 
 permissions:
   contents: write            # needed to create the Release and upload assets
 
 jobs:
+  # On a tag, fail the release before any artifact is built if the tag and the
+  # crate version disagree. `cargo_crate_version!()` in crates/gui/src/update.rs
+  # makes crates/gui/Cargo.toml the source of truth for what the updater
+  # compares against, so a mismatch would ship a release nobody is offered.
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          crate="$(grep -m1 '^version' crates/gui/Cargo.toml | cut -d'"' -f2)"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "manual build of $crate (no release will be published)"
+          else
+            tag="${GITHUB_REF_NAME#v}"
+            test "$tag" = "$crate" || { echo "tag $tag != crate $crate"; exit 1; }
+          fi
+          echo "version=$crate" >> "$GITHUB_OUTPUT"
+
   windows:
+    needs: guard
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Guard tag == Cargo version
-        shell: bash
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          crate="$(grep -m1 '^version' crates/gui/Cargo.toml | cut -d'"' -f2)"
-          test "$tag" = "$crate" || { echo "tag $tag != crate $crate"; exit 1; }
-
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
       - name: Build release binary
         run: cargo build --release -p nybble-gui
 
-      - name: Package asset (zip named with the target triple)
+      - name: Test
+        run: cargo test --workspace
+
+      # The portable archive. Its name must keep the Rust target triple: that is
+      # how self_update finds it, so renaming it breaks the in-app updater for
+      # every existing portable user.
+      - name: Package portable zip
         shell: bash
         run: |
-          mkdir dist
+          mkdir -p dist
           cp target/release/nybble.exe dist/
-          cd dist
-          7z a "nybble-x86_64-pc-windows-msvc.zip" nybble.exe
+          (cd dist && 7z a "nybble-x86_64-pc-windows-msvc.zip" nybble.exe && rm nybble.exe)
+
+      # WiX 3 is not reliably on PATH on the hosted images, and cargo-wix only
+      # looks at $WIX or an explicit --bin-path. Resolve it once here.
+      - name: Install WiX Toolset
+        shell: pwsh
+        run: |
+          $bin = Get-ChildItem "C:\Program Files (x86)" -Filter "WiX Toolset v3.*" -Directory -ErrorAction SilentlyContinue |
+                 ForEach-Object { Join-Path $_.FullName "bin" } |
+                 Where-Object { Test-Path (Join-Path $_ "candle.exe") } |
+                 Select-Object -First 1
+          if (-not $bin) {
+            choco install wixtoolset --no-progress -y
+            $bin = Get-ChildItem "C:\Program Files (x86)" -Filter "WiX Toolset v3.*" -Directory |
+                   ForEach-Object { Join-Path $_.FullName "bin" } |
+                   Where-Object { Test-Path (Join-Path $_ "candle.exe") } |
+                   Select-Object -First 1
+          }
+          if (-not $bin) { throw "WiX 3 candle.exe not found" }
+          "WIX_BIN=$bin" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      # The MSI is named WITHOUT a target triple, deliberately. self_update
+      # matches assets by substring, so a triple here would let it download the
+      # installer and try to run it as the application binary.
+      - name: Build MSI
+        shell: bash
+        run: |
+          cargo install cargo-wix --locked
+          cargo wix -p nybble-gui --nocapture --bin-path "$WIX_BIN" \
+            --output "dist/Nybble-${{ needs.guard.outputs.version }}-x64.msi"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+
+  linux:
+    needs: guard
+    # Pinned to the oldest supported runner on purpose: glibc is only forward
+    # compatible, so whatever we build against sets the minimum glibc for every
+    # distro that can run these artifacts. Building on ubuntu-latest would
+    # silently cut off older but still-supported distributions.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxcursor-dev libxi-dev \
+            libxrandr-dev libxkbcommon-dev libgl1-mesa-dev fuse desktop-file-utils
+
+      - name: Build release binary
+        run: cargo build --release -p nybble-gui
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Validate desktop entry
+        run: desktop-file-validate packaging/nybble.desktop
+
+      # Carries the target triple so portable Linux users get the same working
+      # in-app updater that Windows portable users already have.
+      - name: Package portable tarball
+        run: |
+          mkdir -p dist
+          tar -czf "dist/nybble-x86_64-unknown-linux-gnu.tar.gz" -C target/release nybble
+
+      - name: Build .deb
+        run: |
+          cargo install cargo-deb --locked
+          cargo deb -p nybble-gui --no-build --output dist/
+
+      - name: Build AppImage
+        run: |
+          bash packaging/build-appimage.sh
+          mv Nybble-*.AppImage dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+
+  # Only ever runs for a tag push. A manual run stops after the build jobs, so
+  # the installers are downloadable from the run's Artifacts section and
+  # nothing is published.
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [guard, windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List assets
+        run: ls -lh dist
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/nybble-x86_64-pc-windows-msvc.zip
+          files: dist/*
           generate_release_notes: true

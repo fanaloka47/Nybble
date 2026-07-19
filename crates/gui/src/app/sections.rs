@@ -513,7 +513,7 @@ impl App {
             let field_id = egui::Id::new(("nybble_field_input", label));
             let submit_via_enter = ui.memory(|m| m.has_focus(field_id))
                 && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
-            let (edit_changed, lost_focus, copy_clicked, send_clicked, buf_text, resp) = {
+            let (edit_changed, gained_focus, lost_focus, copy_clicked, send_clicked, buf_text, resp) = {
                 let buf = self.buffer_mut(field);
                 ui.horizontal_top(|ui| {
                     if greyed {
@@ -559,6 +559,7 @@ impl App {
                         }
                         (
                             resp.changed(),
+                            resp.gained_focus(),
                             resp.lost_focus(),
                             copy_clicked,
                             send_clicked,
@@ -570,10 +571,17 @@ impl App {
                 })
                 .inner
             };
+            if gained_focus {
+                // Start each focus session assuming no edit; only a real
+                // change (below) marks it dirty. Lets a click-in-click-out
+                // (e.g. to copy) leave the expression field untouched.
+                self.field_focus_dirty = false;
+            }
             if edit_changed {
                 // A paste may still carry newlines; strip them so the field
                 // stays a single logical line. (Typed Enter is handled below.)
                 self.buffer_mut(field).retain(|c| c != '\n' && c != '\r');
+                self.field_focus_dirty = true;
                 self.on_field_edit(field);
             }
             if submit_via_enter {
@@ -586,10 +594,11 @@ impl App {
                     self.flash_until = ui.input(|i| i.time) + 0.8;
                     self.value_just_changed = false; // already flashing, don't double-trigger
                 }
-            } else if lost_focus {
-                // Re-render the field from the canonical value so group
-                // separators (dropped while the field was focused, to avoid
-                // disrupting typing) reappear once editing ends.
+            } else if lost_focus && self.field_focus_dirty {
+                // Only re-evaluate/re-render on blur if the field was actually
+                // edited during this focus session. A field that was merely
+                // clicked into (e.g. to select and copy its text) and clicked
+                // out of again leaves the expression field untouched.
                 if self.commit_field_expr(field) {
                     self.refresh(None);
                 }

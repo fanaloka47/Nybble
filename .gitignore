@@ -4,6 +4,13 @@
 # Backtrace / debug artifacts
 *.pdb
 
+# Packaging output (built by packaging/build-appimage.sh and cargo deb/wix,
+# published as release assets rather than committed)
+*.AppImage
+*.deb
+*.msi
+/squashfs-root/
+
 # Cargo — keep Cargo.lock for the binary crate (reproducible builds),
 # so it is intentionally NOT ignored.
 

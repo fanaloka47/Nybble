@@ -1,0 +1,35 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Nybble has platform-specific code that no single machine can compile: the
+  # MSI update path is #[cfg(windows)] and the AppImage path is unix-only, so a
+  # Linux-only check silently skips half of crates/gui/src/update.rs. Building
+  # on both catches that at push time rather than mid-release.
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxcursor-dev libxi-dev \
+            libxrandr-dev libxkbcommon-dev libgl1-mesa-dev desktop-file-utils
+
+      - run: cargo build --workspace
+      - run: cargo test --workspace
+
+      - name: Validate desktop entry
+        if: runner.os == 'Linux'
+        run: desktop-file-validate packaging/nybble.desktop

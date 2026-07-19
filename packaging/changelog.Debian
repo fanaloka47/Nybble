@@ -1,0 +1,8 @@
+nybble (1.4.0-1) unstable; urgency=medium
+
+  * Initial Debian packaging.
+  * Upstream release notes are in the app itself: click the version label in
+    the header to open "What's new", or see
+    https://github.com/fanaloka47/nybble/releases
+
+ -- fanaloka47 <arnaudgallez@outlook.com>  Sun, 19 Jul 2026 00:00:00 +0000
