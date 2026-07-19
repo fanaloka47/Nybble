@@ -85,6 +85,20 @@ Requires the **WiX Toolset v3** (`candle.exe`/`light.exe`) on `PATH`, via `$WIX`
 or passed with `--bin-path`. WiX 4/5 use a different schema and will not build
 `main.wxs`.
 
+### Paths inside main.wxs
+
+All file references are anchored to `$(sys.SOURCEFILEDIR)` — the `.wxs` file's
+own directory — which candle expands to an absolute path. Use it for anything
+new. Plain relative paths are a trap here, because the two WiX tools disagree
+about what they are relative to:
+
+- `cargo-wix` invokes `light -b <package dir>`, so `File/@Source` and
+  `Icon/@SourceFile` resolve against `crates/gui`.
+- A `WixVariable` (such as `WixUILicenseRtf`) ignores `-b` entirely and resolves
+  against the **process working directory** — wherever `cargo wix` was run from.
+
+So a relative license path that works locally fails in CI, or vice versa.
+
 `crates/gui/wix/main.wxs` is committed rather than generated. `cargo wix init`
 would regenerate it with a **fresh `UpgradeCode`**, and that GUID is what makes a
 new version replace the old one instead of installing beside it. Never change:
@@ -94,6 +108,30 @@ new version replace the old one instead of installing beside it. Never change:
 
 `License.rtf` is generated from the repo-root `LICENSE`; regenerate it if the
 license ever changes.
+
+### Expected build warning
+
+`light` emits `LGHT1076 : ICE61 ... The Maximum version is not less than the
+current product` on every build. That is the documented consequence of
+`AllowSameVersionUpgrades="yes"`, which deliberately includes the current
+version in the upgrade range so reinstalling the same MSI is idempotent rather
+than an error. It is a warning, not a failure — don't "fix" it by dropping the
+attribute.
+
+### Shortcut components must use HKCU
+
+A shortcut cannot be its own keypath, so both shortcut components anchor on a
+registry value — and that value has to live under `HKCU`, even though this
+package installs per-machine. Windows Installer classifies shortcut folders as
+user profile data regardless of `ALLUSERS`, so:
+
+- `HKCU` — accepted
+- `HKLM` — ICE57: "per-user and per-machine data with a per-machine KeyPath"
+- `HKMU` — ICE57: keypath "can be either per-user or per-machine"
+
+ICE38 and ICE43 independently require `HKCU` for non-advertised shortcuts. The
+trade-off is that shortcut state is tracked per user, so a second user on the
+same machine may need an installer repair to get their own copies.
 
 ### Signing
 

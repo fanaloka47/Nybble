@@ -36,7 +36,11 @@
             SummaryCodepage="1252"/>
 
         <!-- Replace any older Nybble in place. AllowSameVersionUpgrades keeps
-             re-running the same installer idempotent instead of erroring. -->
+             re-running the same installer idempotent instead of erroring.
+             It also makes the upgrade range include the current version, which
+             is what provokes "warning LGHT1076 : ICE61 ... Maximum version is
+             not less than the current product" on every build. That warning is
+             the documented consequence of this attribute, not a defect. -->
         <MajorUpgrade
             Schedule="afterInstallInitialize"
             AllowSameVersionUpgrades="yes"
@@ -57,8 +61,11 @@
                             KeyPath="yes"/>
                     </Component>
                     <Component Id="license" Guid="*" Win64="yes">
+                        <!-- Anchored to this file's directory (…/crates/gui/wix)
+                             rather than the working directory, so `cargo wix`
+                             works from the workspace root or anywhere else. -->
                         <File Id="LicenseFile" Name="LICENSE.txt" DiskId="1"
-                              Source="..\..\LICENSE" KeyPath="yes"/>
+                              Source="$(sys.SOURCEFILEDIR)..\..\..\LICENSE" KeyPath="yes"/>
                     </Component>
                 </Directory>
             </Directory>
@@ -70,9 +77,17 @@
                         Description="A programmer's calculator for hardware engineers"
                         Target="[APPLICATIONFOLDER]nybble.exe"
                         WorkingDirectory="APPLICATIONFOLDER"/>
-                    <!-- A shortcut can't be its own KeyPath under a per-machine
-                         install, so anchor the component on a registry value. -->
-                    <RegistryValue Root="HKMU" Key="Software\fanaloka47\Nybble"
+                    <!-- A shortcut can't be its own KeyPath, so anchor the
+                         component on a registry value — and it must be HKCU.
+                         Windows Installer treats shortcut folders as user
+                         profile data regardless of this package's perMachine
+                         scope, so ICE38 and ICE43 both require a per-user
+                         keypath here, and ICE57 rejects pairing that data with
+                         a per-machine (HKLM) or hive-ambiguous (HKMU) one.
+                         The consequence is that shortcut state is tracked per
+                         user: a second user on the same machine may need a
+                         repair to get their own copies. -->
+                    <RegistryValue Root="HKCU" Key="Software\fanaloka47\Nybble"
                                    Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes"/>
                 </Component>
             </Directory>
@@ -84,7 +99,8 @@
                         Description="A programmer's calculator for hardware engineers"
                         Target="[APPLICATIONFOLDER]nybble.exe"
                         WorkingDirectory="APPLICATIONFOLDER"/>
-                    <RegistryValue Root="HKMU" Key="Software\fanaloka47\Nybble"
+                    <!-- HKCU for the same reason as the start menu shortcut. -->
+                    <RegistryValue Root="HKCU" Key="Software\fanaloka47\Nybble"
                                    Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes"/>
                 </Component>
             </Directory>
@@ -110,7 +126,7 @@
 
         <SetProperty Id="ARPINSTALLLOCATION" Value="[APPLICATIONFOLDER]" After="CostFinalize"/>
         <Property Id="ARPPRODUCTICON" Value="ProductICO"/>
-        <Icon Id="ProductICO" SourceFile="..\..\assets\icon.ico"/>
+        <Icon Id="ProductICO" SourceFile="$(sys.SOURCEFILEDIR)..\..\..\assets\icon.ico"/>
         <Property Id="ARPHELPLINK" Value="https://github.com/fanaloka47/nybble"/>
         <Property Id="ARPURLINFOABOUT" Value="https://github.com/fanaloka47/nybble"/>
 
@@ -130,6 +146,12 @@
         <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch Nybble"/>
         <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1"/>
 
-        <WixVariable Id="WixUILicenseRtf" Value="wix\License.rtf"/>
+        <!-- sys.SOURCEFILEDIR is this .wxs file's own directory, expanded by
+             candle, so the result is absolute. A relative path would not work:
+             cargo-wix passes light `-b <package dir>`, but that base path is
+             only consulted for File/@Source and Icon/@SourceFile — a
+             WixVariable is resolved against the process working directory,
+             which is wherever `cargo wix` happened to be invoked from. -->
+        <WixVariable Id="WixUILicenseRtf" Value="$(sys.SOURCEFILEDIR)License.rtf"/>
     </Product>
 </Wix>
