@@ -129,13 +129,16 @@ Left to the maintainer (do **not** do these automatically): `git tag vX.Y.Z`, pu
 
 ### Release candidates
 
-Tag `vX.Y.Z-rc.N` and tick **"Set as a pre-release"** on the GitHub release. The
-stable channel resolves `/releases/latest`, which GitHub defines as the most
-recent non-draft, non-pre-release release, so ordinary users never see it.
-Testers opt in with `PC_UPDATE_CHANNEL=beta`.
+Tag `vX.Y.Z-rc.N`. The release workflow sets the GitHub pre-release flag
+automatically for any version containing a hyphen, so there is nothing to
+remember to tick. The stable channel resolves `/releases/latest`, which GitHub
+defines as the most recent non-draft, non-pre-release release, so ordinary users
+never see it. Testers opt in with `PC_UPDATE_CHANNEL=beta`.
 
-The pre-release checkbox is what provides that protection, not the tag name — a
-release candidate published as a *normal* release will be handed to everyone.
+That flag is what provides the protection, not the tag name — a release
+candidate published as a *normal* release is handed to everyone. It used to be a
+manual checkbox and was missed on the first RC, which is why it is derived from
+the version now.
 
 Note this only holds for clients running ≥1.5.0. Builds at 1.4.0 and earlier
 check the unfiltered `/releases` list, so they will *display* an RC version in

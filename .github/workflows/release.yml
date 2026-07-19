@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
       - id: v
@@ -30,7 +31,25 @@ jobs:
             tag="${GITHUB_REF_NAME#v}"
             test "$tag" = "$crate" || { echo "tag $tag != crate $crate"; exit 1; }
           fi
+
+          # Decide the pre-release flag from the version itself rather than
+          # leaving it to whoever publishes the release. A semver pre-release
+          # carries a hyphen (1.5.1-rc.1); a stable version never does.
+          #
+          # This is load-bearing, not cosmetic. The app's stable channel asks
+          # GitHub for /releases/latest, which is defined as the most recent
+          # non-draft, NON-PRE-RELEASE release. Publish a release candidate
+          # without this flag and it becomes "latest", so every stable user is
+          # offered it — which is exactly what the channel split exists to
+          # prevent. It is a checkbox on a web page, on a different screen from
+          # everything else, and it has already been missed once.
+          case "$crate" in
+            *-*) prerelease=true ;;
+            *)   prerelease=false ;;
+          esac
           echo "version=$crate" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          echo "version=$crate prerelease=$prerelease"
 
   windows:
     needs: guard
@@ -160,3 +179,8 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+          # Derived from the tag by the guard job — see the reasoning there.
+          # A pre-release is also never made "latest", which is what keeps
+          # /releases/latest (and therefore the app's stable channel) pointing
+          # at the newest stable version.
+          prerelease: ${{ needs.guard.outputs.prerelease }}

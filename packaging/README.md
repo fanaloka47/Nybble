@@ -150,9 +150,15 @@ The updater has two channels, selected by `PC_UPDATE_CHANNEL`:
 | Beta | `beta` | `/releases` (list) | yes, newest first |
 
 Stable defers to GitHub's own definition of "latest" (most recent non-draft,
-non-pre-release) rather than guessing from the tag name, so the **"Set as a
-pre-release" checkbox is what keeps an RC away from users** — not the `-rc.N`
-suffix. Publish a candidate as a normal release and everyone gets it.
+non-pre-release) rather than guessing from the tag name, so the **GitHub
+pre-release flag is what keeps an RC away from users** — not the `-rc.N` suffix.
+A candidate published as a normal release is offered to everyone.
+
+The release workflow now sets that flag itself: the `guard` job marks any
+version containing a hyphen as a pre-release, matching semver. It was a manual
+checkbox until `v1.5.1-rc.1` shipped without it and briefly became the "latest"
+release for every stable user, so it is derived from the version now rather than
+remembered.
 
 `apply_update` pins the download to the exact tag the check found. Without that
 pin the download always resolves `/releases/latest`, so a beta user offered an RC
