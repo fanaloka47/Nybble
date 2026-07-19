@@ -291,6 +291,12 @@ pub struct App {
     /// `current_value_compact` to start the flash (avoids needing `ui` in
     /// the mutation methods, which don't have access to the current time).
     value_just_changed: bool,
+    /// Tracks whether the currently (or just-)focused base field actually had
+    /// its text edited during this focus session, as opposed to merely being
+    /// clicked into (e.g. to copy) and clicked out of again. Reset to `false`
+    /// whenever a field gains focus, set `true` on the first real edit; only
+    /// consulted on `lost_focus` to decide whether to re-evaluate/invalidate.
+    field_focus_dirty: bool,
 
     /// `bits[hi:lo]` extraction range.
     range_hi: u32,
@@ -434,6 +440,7 @@ impl App {
             status_until: 0.0,
             flash_until: 0.0,
             value_just_changed: false,
+            field_focus_dirty: false,
             range_hi: 7,
             range_lo: 0,
             width_scrub_accum: 0.0,
@@ -1216,6 +1223,7 @@ mod tests {
                 status_until: 0.0,
                 flash_until: 0.0,
                 value_just_changed: false,
+                field_focus_dirty: false,
                 range_hi: 7,
                 range_lo: 0,
                 width_scrub_accum: 0.0,
