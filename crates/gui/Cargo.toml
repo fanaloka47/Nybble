@@ -87,3 +87,10 @@ assets = [
     ["../../packaging/icons/hicolor/128x128/apps/nybble.png", "usr/share/icons/hicolor/128x128/apps/", "644"],
     ["../../packaging/icons/hicolor/256x256/apps/nybble.png", "usr/share/icons/hicolor/256x256/apps/", "644"],
 ]
+
+[package.metadata.wix]
+# The authoring lives in crates/gui/wix/main.wxs (cargo-wix resolves it relative
+# to the package, not the workspace root) and is committed rather than generated
+# so the UpgradeCode stays stable across releases. See packaging/README.md.
+name = "Nybble"
+product-name = "Nybble"
