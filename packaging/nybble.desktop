@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=Nybble
+GenericName=Programmer's Calculator
+Comment=Hex, decimal, binary and octal at once, with bit-width and bitwise expressions
+Exec=nybble
+Icon=nybble
+Terminal=false
+# Exactly one main category (Utility) plus the Calculator subcategory. Adding
+# Development too would be a second main category, which makes the app show up
+# twice in the application menu.
+Categories=Utility;Calculator;
+Keywords=hex;hexadecimal;binary;octal;bitwise;calculator;programmer;fpga;verilog;embedded;
+# Must match the app id set in crates/gui/src/main.rs, otherwise the window
+# won't associate with this launcher entry (no icon in the dock/taskbar).
+StartupWMClass=Nybble

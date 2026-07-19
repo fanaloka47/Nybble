@@ -4,6 +4,9 @@ version = "1.4.0"
 edition = "2021"
 description = "Desktop GUI for Nybble, built on eframe/egui."
 license = "Apache-2.0"
+authors = ["fanaloka47"]
+repository = "https://github.com/fanaloka47/nybble"
+homepage = "https://github.com/fanaloka47/nybble"
 
 [[bin]]
 name = "nybble"
@@ -42,3 +45,45 @@ eframe = { version = "0.34", default-features = false, features = ["x11"] }
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
+
+# --- Packaging -------------------------------------------------------------
+# Both installers deliberately leave the user's config alone on uninstall
+# (`~/.local/share/nybble`, `%APPDATA%\Nybble`) so reinstalling keeps history.
+
+[package.metadata.deb]
+name = "nybble"
+maintainer = "fanaloka47 <arnaudgallez@outlook.com>"
+copyright = "2026, fanaloka47"
+# A DEP-5 copyright file rather than the raw LICENSE: Debian policy wants
+# packages to reference /usr/share/common-licenses/Apache-2.0 instead of
+# embedding the full text (lintian: copyright-not-using-common-license-for-apache2).
+# cargo-deb passes this through verbatim because it starts with `Format:`.
+license-file = ["../../packaging/copyright", "0"]
+# Gets gzipped to /usr/share/doc/nybble/changelog.Debian.gz, which policy
+# requires for a non-native package.
+changelog = "../../packaging/changelog.Debian"
+extended-description = """\
+Nybble is a native desktop calculator for FPGA and hardware engineers. It shows \
+one value in hex, decimal, binary and octal simultaneously, supports bit-width \
+and signedness, lets you flip individual bits, and evaluates bitwise and \
+arithmetic expressions."""
+section = "utils"
+priority = "optional"
+# $auto covers the genuinely linked libraries (libc, libm, libgcc) — but that is
+# only four entries, because eframe reaches the X11 and OpenGL stack through
+# dlopen rather than DT_NEEDED. dpkg-shlibdeps cannot see dlopen, so without the
+# explicit list below the package installs cleanly on a minimal system and then
+# fails at startup with a missing-library error. Verify with:
+#   strings -a target/release/nybble | grep -oE 'lib[A-Za-z0-9_-]+\.so(\.[0-9]+)?'
+depends = "$auto, libgl1, libegl1, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxrender1, libxcb1, libxkbcommon0, libxkbcommon-x11-0"
+assets = [
+    ["target/release/nybble", "usr/bin/", "755"],
+    ["../../packaging/nybble.desktop", "usr/share/applications/", "644"],
+    ["../../packaging/nybble.1", "usr/share/man/man1/", "644"],
+    ["../../packaging/icons/hicolor/16x16/apps/nybble.png", "usr/share/icons/hicolor/16x16/apps/", "644"],
+    ["../../packaging/icons/hicolor/32x32/apps/nybble.png", "usr/share/icons/hicolor/32x32/apps/", "644"],
+    ["../../packaging/icons/hicolor/48x48/apps/nybble.png", "usr/share/icons/hicolor/48x48/apps/", "644"],
+    ["../../packaging/icons/hicolor/64x64/apps/nybble.png", "usr/share/icons/hicolor/64x64/apps/", "644"],
+    ["../../packaging/icons/hicolor/128x128/apps/nybble.png", "usr/share/icons/hicolor/128x128/apps/", "644"],
+    ["../../packaging/icons/hicolor/256x256/apps/nybble.png", "usr/share/icons/hicolor/256x256/apps/", "644"],
+]

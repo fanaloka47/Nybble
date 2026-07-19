@@ -4,6 +4,9 @@ version = "1.4.0"
 edition = "2021"
 description = "Pure numeric core for Nybble: multi-base values, width/signedness, ops, expressions."
 license = "Apache-2.0"
+authors = ["fanaloka47"]
+repository = "https://github.com/fanaloka47/nybble"
+homepage = "https://github.com/fanaloka47/nybble"
 
 [lib]
 name = "nybble_core"
