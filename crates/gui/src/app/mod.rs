@@ -1352,7 +1352,7 @@ mod tests {
         let mut app = App::for_test();
         app.value = Value::new(99, w(32));
         app.set_number_mode(NumberMode::Float);
-        app.float_value = 3.14;
+        app.float_value = 2.75;
         app.set_number_mode(NumberMode::Integer);
         assert!(!app.is_float_mode());
         assert_eq!(app.value.raw(), 99);
@@ -1578,9 +1578,9 @@ mod tests {
     fn on_field_edit_float_dec_updates_float_value() {
         let mut app = App::for_test();
         app.set_number_mode(NumberMode::Float);
-        app.dec = "3.14".to_string();
+        app.dec = "2.75".to_string();
         app.on_field_edit(Field::Dec);
-        assert!((app.float_value - 3.14).abs() < 1e-10);
+        assert!((app.float_value - 2.75).abs() < 1e-10);
         assert!(app.status.is_none());
     }
 
