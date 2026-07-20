@@ -99,6 +99,10 @@ pub struct CopyOptions {
     pub keep_leading_zeros: bool,
     /// Keep the `_` group separators (e.g. `DEAD_BEEF` vs `DEADBEEF`).
     pub keep_separators: bool,
+    /// Also apply these options when the user selects a value field's text
+    /// and copies it with the native Ctrl+C, rather than only via the
+    /// copy-icon button.
+    pub apply_to_native_copy: bool,
 }
 
 impl Default for CopyOptions {
@@ -109,6 +113,7 @@ impl Default for CopyOptions {
             prepend_prefix: true,
             keep_leading_zeros: true,
             keep_separators: false,
+            apply_to_native_copy: true,
         }
     }
 }
@@ -125,12 +130,7 @@ impl CopyOptions {
         };
 
         // Separators are presentation-only; drop them unless asked to keep.
-        // HEX/BIN/OCT use '_'; DEC uses '\'' as thousands separator.
-        let mut body: String = if self.keep_separators {
-            display.to_owned()
-        } else {
-            display.chars().filter(|&c| c != '_' && c != '\'').collect()
-        };
+        let mut body = self.apply_partial(display);
 
         // Leading zeros only ever appear in the padded bit bases. DEC is never
         // zero-padded, so this is a no-op there (and we never strip a `-` sign).
@@ -141,6 +141,19 @@ impl CopyOptions {
         match prefix {
             Some(p) if self.prepend_prefix => format!("{p}{body}"),
             _ => body,
+        }
+    }
+
+    /// Apply just the separator-stripping option to an arbitrary substring —
+    /// e.g. a partial selection copied out of a value field with the native
+    /// Ctrl+C, where prefix and leading-zero handling don't make sense (they
+    /// only apply to a whole-value copy). HEX/BIN/OCT use `_`; DEC uses `'`
+    /// as its thousands separator.
+    pub fn apply_partial(&self, text: &str) -> String {
+        if self.keep_separators {
+            text.to_owned()
+        } else {
+            text.chars().filter(|&c| c != '_' && c != '\'').collect()
         }
     }
 }
@@ -263,6 +276,7 @@ impl Settings {
         s.copy.prepend_prefix = flag("copy_prefix", true);
         s.copy.keep_leading_zeros = flag("copy_leading_zeros", true);
         s.copy.keep_separators = flag("copy_separators", false);
+        s.copy.apply_to_native_copy = flag("copy_native_ctrl_c", true);
         s
     }
 
@@ -292,6 +306,7 @@ impl Settings {
         put("copy_prefix", self.copy.prepend_prefix);
         put("copy_leading_zeros", self.copy.keep_leading_zeros);
         put("copy_separators", self.copy.keep_separators);
+        put("copy_native_ctrl_c", self.copy.apply_to_native_copy);
     }
 }
 
@@ -339,6 +354,21 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(c.apply("HEX", "DEAD_BEEF"), "0xDEAD_BEEF");
+    }
+
+    #[test]
+    fn copy_apply_partial_strips_separators_only() {
+        // No prefix, no leading-zero handling — just the separator option,
+        // for a partial selection copied out of a value field.
+        let c = CopyOptions::default(); // keep_separators: false
+        assert_eq!(c.apply_partial("DE_AD"), "DEAD");
+        assert_eq!(c.apply_partial("1'000"), "1000");
+
+        let c = CopyOptions {
+            keep_separators: true,
+            ..Default::default()
+        };
+        assert_eq!(c.apply_partial("DE_AD"), "DE_AD");
     }
 
     #[test]

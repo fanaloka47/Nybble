@@ -515,7 +515,19 @@ impl App {
             let field_id = egui::Id::new(("nybble_field_input", label));
             let submit_via_enter = ui.memory(|m| m.has_focus(field_id))
                 && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
-            let (edit_changed, gained_focus, lost_focus, copy_clicked, send_clicked, buf_text, resp) = {
+            // Captured before the mutable borrow of `self` below (via
+            // `buffer_mut`) starts, same as `label`/`greyed` above.
+            let copy_options = self.settings.copy;
+            let (
+                edit_changed,
+                gained_focus,
+                lost_focus,
+                copy_clicked,
+                send_clicked,
+                native_copy_text,
+                buf_text,
+                resp,
+            ) = {
                 let buf = self.buffer_mut(field);
                 ui.horizontal_top(|ui| {
                     if greyed {
@@ -528,14 +540,47 @@ impl App {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
                         let copy_clicked = widgets::copy_icon_button(ui).clicked();
                         let send_clicked = widgets::send_icon_button(ui).clicked();
-                        let resp = ui.add(
-                            egui::TextEdit::multiline(buf)
-                                .id(field_id)
-                                .font(egui::FontId::new(16.0, egui::FontFamily::Monospace))
-                                .desired_width(f32::INFINITY)
-                                .desired_rows(1)
-                                .margin(egui::vec2(8.0, 4.0)),
-                        );
+                        let output = egui::TextEdit::multiline(buf)
+                            .id(field_id)
+                            .font(egui::FontId::new(16.0, egui::FontFamily::Monospace))
+                            .desired_width(f32::INFINITY)
+                            .desired_rows(1)
+                            .margin(egui::vec2(8.0, 4.0))
+                            .show(ui);
+                        let cursor_range = output.cursor_range;
+                        // `TextEditOutput::response` is an `AtomLayoutResponse`
+                        // (derefs to `Response`); unwrap to the plain `Response`
+                        // so everything below matches the old `ui.add(...)` type.
+                        let resp = output.response.response;
+                        // A selection copied out of this field natively (Ctrl+C)
+                        // bypasses `CopyOptions`, since `TextEdit` writes the raw
+                        // selection straight to the clipboard. Re-copy afterward
+                        // so it wins: the *whole* field selected gets the full
+                        // transform (same as the copy button); a partial
+                        // selection copies exactly what's highlighted, only
+                        // stripping separators if that setting says to.
+                        let native_copy_text = if copy_options.apply_to_native_copy
+                            && resp.has_focus()
+                            && ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Copy)))
+                        {
+                            cursor_range.and_then(|cr| {
+                                let range = cr.as_sorted_char_range();
+                                if range.is_empty() {
+                                    None
+                                } else if range.start == 0 && range.end == buf.chars().count() {
+                                    Some(copy_options.apply(label, buf))
+                                } else {
+                                    let selected: String = buf
+                                        .chars()
+                                        .skip(range.start)
+                                        .take(range.end - range.start)
+                                        .collect();
+                                    Some(copy_options.apply_partial(&selected))
+                                }
+                            })
+                        } else {
+                            None
+                        };
                         let resp = if greyed {
                             resp.on_disabled_hover_text(
                                 "In float mode the bit view lives in the Interpret section",
@@ -565,6 +610,7 @@ impl App {
                             resp.lost_focus(),
                             copy_clicked,
                             send_clicked,
+                            native_copy_text,
                             buf.clone(),
                             resp,
                         )
@@ -607,6 +653,9 @@ impl App {
             }
             if copy_clicked {
                 let text = self.settings.copy.apply(label, &buf_text);
+                self.copy(ui.ctx(), text, label);
+            }
+            if let Some(text) = native_copy_text {
                 self.copy(ui.ctx(), text, label);
             }
             if send_clicked {
@@ -1201,6 +1250,20 @@ impl App {
             ui.label(egui::RichText::new("Preview").weak().small());
             ui.monospace(egui::RichText::new(preview).color(theme::accent(ui.ctx())));
         });
+
+        // Not itself a transform option — it decides where the ones above
+        // apply — so it gets a beat of space rather than sitting in the list.
+        ui.add_space(10.0);
+        ui.checkbox(
+            &mut self.settings.copy.apply_to_native_copy,
+            "Also apply to Ctrl+C copies",
+        )
+        .on_hover_text(
+            "Selecting a whole value field and copying it applies the options \
+             above, same as the copy button. Selecting only part of a value \
+             copies exactly that selection, only stripping separators if \
+             \"Keep group separators\" is off.",
+        );
     }
 
     /// Draw the auto-dismissing toast and clear it once expired.
