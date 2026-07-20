@@ -18,6 +18,7 @@ use batch::{Base, SourceBase};
 
 mod batch;
 mod layout;
+mod scratchpad;
 mod sections;
 
 enum UpdateMsg {
@@ -211,23 +212,26 @@ impl SettingsTab {
     }
 }
 
-/// The two top-level workspaces. `Calculator` is the original single-value
-/// programmer's calculator; `Batch` is the list converter (see `batch.rs`).
-/// Selected via the tab bar under the header; persisted across sessions.
+/// The top-level workspaces. `Calculator` is the original single-value
+/// programmer's calculator; `Batch` is the list converter (see `batch.rs`);
+/// `Scratchpad` is a free-form notes field (see `scratchpad.rs`). Selected via
+/// the tab bar under the header; persisted across sessions.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum AppTab {
     #[default]
     Calculator,
     Batch,
+    Scratchpad,
 }
 
 impl AppTab {
-    const ALL: [AppTab; 2] = [AppTab::Calculator, AppTab::Batch];
+    const ALL: [AppTab; 3] = [AppTab::Calculator, AppTab::Batch, AppTab::Scratchpad];
 
     fn label(self) -> &'static str {
         match self {
             AppTab::Calculator => "Calculator",
             AppTab::Batch => "Batch convert",
+            AppTab::Scratchpad => "Scratchpad",
         }
     }
 
@@ -235,6 +239,7 @@ impl AppTab {
         match self {
             AppTab::Calculator => "calculator",
             AppTab::Batch => "batch",
+            AppTab::Scratchpad => "scratchpad",
         }
     }
 
@@ -242,6 +247,7 @@ impl AppTab {
         match s {
             "calculator" => Some(AppTab::Calculator),
             "batch" => Some(AppTab::Batch),
+            "scratchpad" => Some(AppTab::Scratchpad),
             _ => None,
         }
     }
@@ -314,6 +320,8 @@ pub struct App {
     batch_input: String,
     batch_from: SourceBase,
     batch_to: Base,
+    /// Scratchpad tab: free-form notes, persisted across sessions.
+    scratchpad: String,
 
     theme_mode: ThemeMode,
     view_mode: ViewMode,
@@ -377,6 +385,9 @@ impl App {
             .and_then(|s| s.get_string("batch_to"))
             .and_then(|s| Base::from_key(&s))
             .unwrap_or(Base::Dec);
+        let scratchpad = storage
+            .and_then(|s| s.get_string("scratchpad"))
+            .unwrap_or_default();
         let custom_size = storage.and_then(|s| {
             let w = s.get_string("custom_w")?.parse::<f32>().ok()?;
             let h = s.get_string("custom_h")?.parse::<f32>().ok()?;
@@ -453,6 +464,7 @@ impl App {
             batch_input: String::new(),
             batch_from,
             batch_to,
+            scratchpad,
             theme_mode,
             view_mode,
             settings,
@@ -1182,6 +1194,7 @@ impl eframe::App for App {
             match self.tab {
                 AppTab::Calculator => self.calculator_body(ui),
                 AppTab::Batch => self.batch_body(ui),
+                AppTab::Scratchpad => self.scratchpad_body(ui),
             }
         });
 
@@ -1199,6 +1212,7 @@ impl eframe::App for App {
         storage.set_string("tab", self.tab.key().to_owned());
         storage.set_string("batch_from", self.batch_from.key().to_owned());
         storage.set_string("batch_to", self.batch_to.key().to_owned());
+        storage.set_string("scratchpad", self.scratchpad.clone());
         storage.set_string(
             "auto_check_updates",
             if self.auto_check_updates {
@@ -1267,6 +1281,7 @@ mod tests {
                 batch_input: String::new(),
                 batch_from: SourceBase::Auto,
                 batch_to: Base::Dec,
+                scratchpad: String::new(),
                 theme_mode: ThemeMode::default(),
                 view_mode: ViewMode::default(),
                 settings: Settings::default(),
