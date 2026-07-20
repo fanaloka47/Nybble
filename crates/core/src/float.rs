@@ -21,13 +21,38 @@
 
 use crate::expr::EvalError;
 use crate::parse::{parse_literal, ParseError};
-use crate::value::{Value, Width};
+use crate::value::{group, Value, Width};
 
 /// Reinterpret an `f64`'s IEEE 754 bits as a 64-bit [`Value`] for hex/bin/oct
 /// rendering. The integer width in use elsewhere does not apply: a float is
 /// always shown through its `f64` encoding.
 pub fn f64_to_value(x: f64) -> Value {
     Value::new(x.to_bits() as u128, Width::new(64).unwrap())
+}
+
+/// Format `x` for display, grouping the integer part with apostrophe
+/// thousands separators, mirroring `Value::to_dec`'s convention so int and
+/// float mode read the same way (e.g. `1'000'000.5`). The fractional part is
+/// left ungrouped. NaN/infinity have no digits to group and pass through
+/// `Display` unchanged.
+pub fn format_float(x: f64) -> String {
+    if !x.is_finite() {
+        return format!("{x}");
+    }
+    let s = format!("{x}");
+    let (sign, rest) = match s.strip_prefix('-') {
+        Some(r) => ("-", r),
+        None => ("", s.as_str()),
+    };
+    let (int_part, frac_part) = match rest.split_once('.') {
+        Some((i, f)) => (i, Some(f)),
+        None => (rest, None),
+    };
+    let grouped_int = group(int_part, '\'', 3);
+    match frac_part {
+        Some(f) => format!("{sign}{grouped_int}.{f}"),
+        None => format!("{sign}{grouped_int}"),
+    }
 }
 
 /// The exponent bias of IEEE 754 `binary64`: the stored exponent field minus
@@ -603,6 +628,23 @@ mod tests {
             eval_float("foo", 0.0),
             Err(EvalError::UnknownIdent(_))
         ));
+    }
+
+    #[test]
+    fn format_float_groups_integer_part() {
+        assert_eq!(format_float(1000.0), "1'000");
+        assert_eq!(format_float(1_000_000.5), "1'000'000.5");
+        assert_eq!(format_float(-10000.25), "-10'000.25");
+        assert_eq!(format_float(999.0), "999");
+        assert_eq!(format_float(0.5), "0.5");
+        assert_eq!(format_float(-0.0), "-0");
+    }
+
+    #[test]
+    fn format_float_specials_unchanged() {
+        assert_eq!(format_float(f64::NAN), "NaN");
+        assert_eq!(format_float(f64::INFINITY), "inf");
+        assert_eq!(format_float(f64::NEG_INFINITY), "-inf");
     }
 
     #[test]

@@ -3,7 +3,9 @@
 use super::{App, Field, HistoryBase, HistoryResult, NumberMode, SettingsTab};
 use crate::settings::{CopyOptions, Panel};
 use crate::{theme, widgets};
-use nybble_core::{f64_to_value, FloatClass, Ieee754, Signedness, Value, F64_EXPONENT_BIAS};
+use nybble_core::{
+    f64_to_value, format_float, FloatClass, Ieee754, Signedness, Value, F64_EXPONENT_BIAS,
+};
 
 impl App {
     pub(super) fn section(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
@@ -1580,12 +1582,12 @@ fn float_value_lines(
     };
     match base {
         HistoryBase::All => {
-            line(ui, "DEC", format!("{x}"));
+            line(ui, "DEC", format_float(x));
             line(ui, "HEX", bits.to_hex());
             line(ui, "BIN", bits.to_bin());
             line(ui, "OCT", bits.to_oct());
         }
-        HistoryBase::Dec => line(ui, "DEC", format!("{x}")),
+        HistoryBase::Dec => line(ui, "DEC", format_float(x)),
         HistoryBase::Hex => line(ui, "HEX", bits.to_hex()),
         HistoryBase::Bin => line(ui, "BIN", bits.to_bin()),
         HistoryBase::Oct => line(ui, "OCT", bits.to_oct()),

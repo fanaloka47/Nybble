@@ -151,7 +151,7 @@ impl Value {
 
 /// Insert `sep` every `group_size` characters counting from the right.
 /// `group("DEADBEEF", '_', 4)` -> `"DEAD_BEEF"`.
-fn group(s: &str, sep: char, group_size: usize) -> String {
+pub(crate) fn group(s: &str, sep: char, group_size: usize) -> String {
     let len = s.len();
     let mut out = String::with_capacity(len + len / group_size);
     for (i, c) in s.chars().enumerate() {

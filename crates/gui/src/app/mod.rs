@@ -7,7 +7,8 @@
 //! the meaning of `>>` and `/`.
 
 use nybble_core::{
-    eval, eval_float, eval_radix, f64_to_value, fixed, parse_base, Signedness, Value, Width,
+    eval, eval_float, eval_radix, f64_to_value, fixed, format_float, parse_base, Signedness, Value,
+    Width,
 };
 
 use crate::settings::Settings;
@@ -553,7 +554,7 @@ impl App {
             // f64 IEEE-754 pattern (always 64-bit, independent of `width`).
             let bits = f64_to_value(self.float_value);
             if skip != Some(Field::Dec) {
-                self.dec = format!("{}", self.float_value);
+                self.dec = format_float(self.float_value);
             }
             if skip != Some(Field::Hex) {
                 self.hex = bits.to_hex();
@@ -716,7 +717,10 @@ impl App {
     fn on_field_edit_float(&mut self, field: Field) {
         match field {
             Field::Dec => {
-                let text = self.dec.trim();
+                // Drop the thousands separator so a re-formatted buffer (e.g.
+                // `1'000.5`) still parses as a plain real.
+                let text = self.dec.replace('\'', "");
+                let text = text.trim();
                 if text.is_empty() {
                     return;
                 }
