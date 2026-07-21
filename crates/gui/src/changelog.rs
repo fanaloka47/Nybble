@@ -14,6 +14,15 @@ pub struct ReleaseNotes {
 /// `crates/gui/Cargo.toml`'s `version` to match — each time you cut a release.
 pub const ENTRIES: &[ReleaseNotes] = &[
     ReleaseNotes {
+        version: "1.6.0",
+        items: &[
+            "Added a Scratchpad tab for free-form notes that's saved with the rest of your preferences and restored the next time you open the app.",
+            "Float mode's decimal display now groups digits with thousands separators, matching the integer bases.",
+            "Your Copy Options now apply to native Ctrl+C copies from the value fields, not just the Copy buttons. Can be changed in settings",
+            "Fixed: on Windows, the in-app updater could fail to launch the downloaded installer because the command line was over-escaped.",
+        ],
+    },
+    ReleaseNotes {
         version: "1.5.0",
         items: &[
             "Nybble now has real installers. On Windows there's an .msi that adds Start Menu and Add/Remove Programs entries; on Linux there's a .deb for Debian/Ubuntu and an AppImage that runs anywhere. The portable downloads are still there and still work exactly as before.",
