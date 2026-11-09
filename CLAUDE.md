@@ -66,7 +66,7 @@ In float mode, `float_value: f64` is the currency instead of `Value`.
 
 ## Persisted preferences
 
-`theme_mode`, `history_base`, `view_mode`, `number_mode`, `custom_w`/`custom_h`, `auto_check_updates`, `last_seen_version` (drives the "What's new" dialog — shown once when the running version differs), the `history` list, and the settings keys (`panel_order`, `panel_*`, `field_*`, `show_fixed_point`/`show_bit_slicer`, `copy_*`) — stored via eframe's persistence feature. The `history` key holds a newline-delimited, unit-separator (`\x1f`) encoding of each entry (`serialize_history`/`deserialize_history` in `app/mod.rs`), capped at 50 entries by `push_history`'s self-cleanup. The current value is session-only.
+`theme_mode`, `history_base`, `view_mode`, `number_mode`, `width`/`sign`/`frac_bits` (restored by `load_format`, falling back to 32-bit unsigned), `custom_w`/`custom_h`, `auto_check_updates`, `last_seen_version` (drives the "What's new" dialog — shown once when the running version differs), the `history` list, and the settings keys (`panel_order`, `panel_*`, `field_*`, `show_fixed_point`/`show_bit_slicer`, `copy_*`) — stored via eframe's persistence feature. The `history` key holds a newline-delimited, unit-separator (`\x1f`) encoding of each entry (`serialize_history`/`deserialize_history` in `app/mod.rs`), capped at 50 entries by `push_history`'s self-cleanup. The current value is session-only (it always starts at 0, at the persisted width).
 
 ## Where to make changes
 

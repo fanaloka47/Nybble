@@ -404,6 +404,13 @@ impl App {
             .map(|v| v != "false")
             .unwrap_or(true);
         let settings = storage.map(Settings::load).unwrap_or_default();
+        // Width, signedness and fixed-point fraction bits are preferences and
+        // persist; the value itself is session-only and always starts at 0.
+        let (width, sign, frac_bits) = load_format(
+            storage.and_then(|s| s.get_string("width")).as_deref(),
+            storage.and_then(|s| s.get_string("sign")).as_deref(),
+            storage.and_then(|s| s.get_string("frac_bits")).as_deref(),
+        );
 
         let history = storage
             .and_then(|s| s.get_string("history"))
@@ -435,12 +442,11 @@ impl App {
             .insert(0, "JetBrainsMono".to_owned());
         cc.egui_ctx.set_fonts(fonts);
 
-        let width = Width::new(32).unwrap();
         let mut app = Self {
             value: Value::new(0, width),
             width,
-            sign: Signedness::Unsigned,
-            frac_bits: 0,
+            sign,
+            frac_bits,
             number_mode,
             float_value: 0.0,
             hex: String::new(),
@@ -922,6 +928,37 @@ fn serialize_history(history: &[HistoryEntry]) -> String {
         .join("\n")
 }
 
+/// Persistence key for a signedness.
+fn sign_key(sign: Signedness) -> &'static str {
+    match sign {
+        Signedness::Unsigned => "unsigned",
+        Signedness::Signed => "signed",
+    }
+}
+
+/// Restore the persisted width, signedness and fraction bits. Each falls back
+/// to its default (32-bit, unsigned, 0) when missing or invalid, and the
+/// fraction bits are clamped so they never exceed the width.
+fn load_format(
+    width: Option<&str>,
+    sign: Option<&str>,
+    frac_bits: Option<&str>,
+) -> (Width, Signedness, u32) {
+    let width = width
+        .and_then(|s| s.parse().ok())
+        .and_then(Width::new)
+        .unwrap_or_else(|| Width::new(32).unwrap());
+    let sign = match sign {
+        Some("signed") => Signedness::Signed,
+        _ => Signedness::Unsigned,
+    };
+    let frac_bits = frac_bits
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(0)
+        .min(width.bits());
+    (width, sign, frac_bits)
+}
+
 /// Parse the history back from [`serialize_history`]'s format. Malformed lines
 /// (e.g. from a corrupt store or a future format) are skipped rather than
 /// failing the whole load.
@@ -1229,6 +1266,9 @@ impl eframe::App for App {
         storage.set_string("batch_from", self.batch_from.key().to_owned());
         storage.set_string("batch_to", self.batch_to.key().to_owned());
         storage.set_string("scratchpad", self.scratchpad.clone());
+        storage.set_string("width", self.width.bits().to_string());
+        storage.set_string("sign", sign_key(self.sign).to_owned());
+        storage.set_string("frac_bits", self.frac_bits.to_string());
         storage.set_string(
             "auto_check_updates",
             if self.auto_check_updates {
@@ -1480,6 +1520,41 @@ mod tests {
             result: HistoryResult::Float(1.5),
         });
         assert!(app.show_expr_result);
+    }
+
+    // --- persisted format (width / sign / frac bits) ---
+
+    #[test]
+    fn load_format_defaults_when_missing() {
+        let (width, sign, frac) = load_format(None, None, None);
+        assert_eq!(width.bits(), 32);
+        assert_eq!(sign, Signedness::Unsigned);
+        assert_eq!(frac, 0);
+    }
+
+    #[test]
+    fn load_format_round_trips_saved_values() {
+        let (width, sign, frac) =
+            load_format(Some("16"), Some(sign_key(Signedness::Signed)), Some("8"));
+        assert_eq!(width.bits(), 16);
+        assert_eq!(sign, Signedness::Signed);
+        assert_eq!(frac, 8);
+        assert_eq!(sign_key(Signedness::Unsigned), "unsigned");
+    }
+
+    #[test]
+    fn load_format_rejects_invalid_and_clamps_frac() {
+        let (width, sign, frac) = load_format(Some("0"), Some("bogus"), Some("x"));
+        assert_eq!(width.bits(), 32);
+        assert_eq!(sign, Signedness::Unsigned);
+        assert_eq!(frac, 0);
+
+        let (width, _, _) = load_format(Some("129"), None, None);
+        assert_eq!(width.bits(), 32);
+
+        let (width, _, frac) = load_format(Some("8"), None, Some("20"));
+        assert_eq!(width.bits(), 8);
+        assert_eq!(frac, 8);
     }
 
     // --- recall ---
