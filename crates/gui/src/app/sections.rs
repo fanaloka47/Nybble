@@ -904,9 +904,17 @@ impl App {
     }
 
     fn bits_section(&mut self, ui: &mut egui::Ui) {
-        section_label(ui, "BITS · MSB to LSB");
+        let mut action_value = None;
+        ui.horizontal(|ui| {
+            section_label(ui, "BITS · MSB to LSB");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                action_value = widgets::bit_actions(ui, self.value);
+            });
+        });
+        ui.add_space(4.0);
         let accent = theme::accent(ui.ctx());
-        if let Some(new_value) = widgets::bit_grid(ui, self.value, accent) {
+        let grid_value = widgets::bit_grid(ui, self.value, accent);
+        if let Some(new_value) = action_value.or(grid_value) {
             self.value = new_value;
             self.status = None;
             self.invalidate_expr();

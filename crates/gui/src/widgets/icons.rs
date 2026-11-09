@@ -233,3 +233,53 @@ fn draw_sun(p: &egui::Painter, c: egui::Pos2, col: egui::Color32) {
         );
     }
 }
+
+/// Which whole-value bit action a `bit_action_button` represents.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum BitAction {
+    SetAll,
+    Clear,
+    Invert,
+}
+
+/// Small button for a whole-value bit action, labelled with bit digits in the
+/// monospace font so it matches the bit cells: `111` (set all), `000` (clear),
+/// `~` (invert, bitwise NOT). All ASCII, so JetBrains Mono covers it. When
+/// `enabled` is false it renders greyed and ignores clicks.
+pub fn bit_action_button(ui: &mut egui::Ui, action: BitAction, enabled: bool) -> egui::Response {
+    let label = match action {
+        BitAction::SetAll => "111",
+        BitAction::Clear => "000",
+        BitAction::Invert => "~",
+    };
+    let h = ui.spacing().interact_size.y;
+    let font = egui::FontId::monospace(12.0);
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_owned(), font.clone(), egui::Color32::PLACEHOLDER);
+    let w = (galley.size().x + 10.0).max(h);
+    let sense = if enabled {
+        egui::Sense::click()
+    } else {
+        egui::Sense::hover()
+    };
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, h), sense);
+
+    if ui.is_rect_visible(rect) {
+        let vis = ui.style().interact(&resp);
+        let col = if enabled {
+            vis.fg_stroke.color
+        } else {
+            ui.visuals().weak_text_color()
+        };
+        let p = ui.painter();
+        p.rect_filled(rect, egui::CornerRadius::same(4), vis.weak_bg_fill);
+        p.text(rect.center(), egui::Align2::CENTER_CENTER, label, font, col);
+    }
+
+    resp.on_hover_text(match action {
+        BitAction::SetAll => "Set all bits",
+        BitAction::Clear => "Clear all bits",
+        BitAction::Invert => "Invert all bits (~)",
+    })
+}

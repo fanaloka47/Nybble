@@ -4,6 +4,8 @@
 use egui::{Color32, CornerRadius, Sense, Vec2};
 use nybble_core::Value;
 
+use super::icons::{bit_action_button, BitAction};
+
 const CELL: f32 = 26.0; // bit cell size (square-ish)
 const CELL_H: f32 = 28.0; // bit cell height
 const CELL_GAP: f32 = 2.0; // gap between bits inside a nibble group
@@ -28,7 +30,6 @@ pub fn bit_grid(ui: &mut egui::Ui, value: Value, accent: Color32) -> Option<Valu
     }
     let raw = value.raw();
     let mut toggled: Option<u32> = None;
-    let mut cleared = false;
 
     // Header: highest bit index on the left; set count and bit 0 on the right.
     // Kept on a single bounded row so nothing drifts vertically.
@@ -43,9 +44,6 @@ pub fn bit_grid(ui: &mut egui::Ui, value: Value, accent: Color32) -> Option<Valu
                     .small()
                     .color(accent),
             );
-            if popcount > 0 && ui.button("Clear").clicked() {
-                cleared = true;
-            }
         });
     });
     ui.add_space(6.0);
@@ -143,10 +141,36 @@ pub fn bit_grid(ui: &mut egui::Ui, value: Value, accent: Color32) -> Option<Valu
         ui.add_space(6.0);
     }
 
-    if cleared {
-        return Some(value.with_raw(0));
-    }
     toggled.map(|b| value.with_raw(value.raw() ^ (1u128 << b)))
+}
+
+/// Whole-value action buttons: [set all][clear][invert]. Meant for a
+/// right-to-left layout (e.g. the right end of the panel's title row). Returns
+/// the new value if one was clicked.
+pub fn bit_actions(ui: &mut egui::Ui, value: Value) -> Option<Value> {
+    let w = value.width().bits();
+    let raw = value.raw();
+    let popcount = raw.count_ones();
+    let mut action: Option<BitAction> = None;
+
+    // Right-to-left: added last = leftmost.
+    ui.spacing_mut().item_spacing.x = 3.0;
+    if bit_action_button(ui, BitAction::Invert, true).clicked() {
+        action = Some(BitAction::Invert);
+    }
+    if bit_action_button(ui, BitAction::Clear, popcount > 0).clicked() {
+        action = Some(BitAction::Clear);
+    }
+    if bit_action_button(ui, BitAction::SetAll, popcount < w).clicked() {
+        action = Some(BitAction::SetAll);
+    }
+
+    // `with_raw` masks to the value's width, so these only touch the `w` bits.
+    action.map(|a| match a {
+        BitAction::SetAll => value.with_raw(u128::MAX),
+        BitAction::Clear => value.with_raw(0),
+        BitAction::Invert => value.with_raw(!raw),
+    })
 }
 
 /// The thin visual bit bar. Returns the index of a clicked bit, if any.
