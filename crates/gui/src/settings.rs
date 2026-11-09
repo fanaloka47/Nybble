@@ -192,6 +192,11 @@ pub struct Settings {
     /// by default — the field normally keeps the typed expression.
     pub result_to_expression: bool,
 
+    /// Show the line under the expression field: the result of the last
+    /// evaluation (or an "Enter to evaluate" hint). It always reserves its
+    /// row so the layout doesn't shift on Enter. On by default.
+    pub show_result_line: bool,
+
     pub copy: CopyOptions,
 }
 
@@ -207,6 +212,7 @@ impl Default for Settings {
             show_fixed_point: true,
             show_bit_slicer: true,
             result_to_expression: false,
+            show_result_line: true,
             copy: CopyOptions::default(),
         }
     }
@@ -273,6 +279,7 @@ impl Settings {
         s.show_fixed_point = flag("show_fixed_point", true);
         s.show_bit_slicer = flag("show_bit_slicer", true);
         s.result_to_expression = flag("result_to_expression", false);
+        s.show_result_line = flag("show_result_line", true);
         s.copy.prepend_prefix = flag("copy_prefix", true);
         s.copy.keep_leading_zeros = flag("copy_leading_zeros", true);
         s.copy.keep_separators = flag("copy_separators", false);
@@ -303,6 +310,7 @@ impl Settings {
         put("show_fixed_point", self.show_fixed_point);
         put("show_bit_slicer", self.show_bit_slicer);
         put("result_to_expression", self.result_to_expression);
+        put("show_result_line", self.show_result_line);
         put("copy_prefix", self.copy.prepend_prefix);
         put("copy_leading_zeros", self.copy.keep_leading_zeros);
         put("copy_separators", self.copy.keep_separators);
@@ -313,6 +321,11 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn result_line_on_by_default() {
+        assert!(Settings::default().show_result_line);
+    }
 
     #[test]
     fn copy_default_matches_legacy() {

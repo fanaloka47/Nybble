@@ -153,10 +153,51 @@ impl App {
             }
         });
 
-        if let Some(err) = &self.expr_error {
-            ui.add_space(6.0);
-            ui.colored_label(ui.visuals().error_fg_color, err);
+        // One always-reserved line under the field, so pressing Enter never
+        // shifts the layout: an error takes priority, then the result (the
+        // current `ans`) once an expression has been evaluated, else a hint.
+        // Only an error long enough to wrap can grow it.
+        //
+        // With the line turned off in settings, only an error is shown, and
+        // only while there is one.
+        if !self.settings.show_result_line {
+            if let Some(err) = &self.expr_error {
+                ui.add_space(6.0);
+                ui.colored_label(ui.visuals().error_fg_color, err);
+            }
+            return;
         }
+        ui.add_space(6.0);
+        ui.vertical(|ui| {
+            // A full row height: `ui.horizontal` (the result line) enforces it
+            // anyway, so the hint and error states must reserve the same.
+            ui.set_min_height(ui.spacing().interact_size.y);
+            if let Some(err) = &self.expr_error {
+                ui.colored_label(ui.visuals().error_fg_color, err);
+            } else if self.show_expr_result {
+                let (main, secondary) = if self.is_float_mode() {
+                    (format_float(self.float_value), None)
+                } else {
+                    (
+                        self.value.to_dec(self.sign),
+                        Some(format!("0x{}", self.value.to_hex())),
+                    )
+                };
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new(format!("= {main}"))
+                            .font(egui::FontId::new(16.0, egui::FontFamily::Monospace))
+                            .color(accent),
+                    );
+                    if let Some(hex) = secondary {
+                        ui.add_space(6.0);
+                        ui.label(egui::RichText::new(hex).monospace().weak());
+                    }
+                });
+            } else {
+                ui.label(egui::RichText::new("Enter to evaluate").weak().small());
+            }
+        });
     }
 
     /// Draws the int/float pill toggle filling `rect`, with `corners` rounding
@@ -1227,6 +1268,19 @@ impl App {
             egui::RichText::new(
                 "After evaluating, replace the expression with its result in \
                  decimal so the next expression builds on it.",
+            )
+            .weak()
+            .small(),
+        );
+        ui.add_space(6.0);
+        ui.checkbox(
+            &mut self.settings.show_result_line,
+            "Show result under the expression field",
+        );
+        ui.label(
+            egui::RichText::new(
+                "After evaluating, show the result in decimal and hex below the \
+                 field. Its space is always reserved, so the layout doesn't shift.",
             )
             .weak()
             .small(),

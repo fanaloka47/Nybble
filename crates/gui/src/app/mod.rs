@@ -285,6 +285,11 @@ pub struct App {
     /// by `expression_centerpiece` to focus the box (which is drawn before the
     /// value rows, so the focus request must be deferred one frame).
     expr_focus_request: bool,
+    /// Show the `= result` line under the expression field. Set on a
+    /// successful evaluation and cleared whenever the value changes some other
+    /// way, so the line always shows the current `ans`. Edits to the field
+    /// don't clear it — that would make the panels below jump while typing.
+    show_expr_result: bool,
 
     /// Transient bottom-of-screen toast (copies, parse errors).
     status: Option<String>,
@@ -448,6 +453,7 @@ impl App {
             history_base,
             expr_error: None,
             expr_focus_request: false,
+            show_expr_result: false,
             status: None,
             status_until: 0.0,
             flash_until: 0.0,
@@ -599,6 +605,7 @@ impl App {
     fn invalidate_expr(&mut self) {
         self.expr.clear();
         self.expr_error = None;
+        self.show_expr_result = false;
         self.value_just_changed = true;
     }
 
@@ -666,6 +673,7 @@ impl App {
         }
         self.number_mode = mode;
         self.expr_error = None;
+        self.show_expr_result = false;
         self.status = None;
         self.refresh(None);
     }
@@ -809,6 +817,7 @@ impl App {
                 Ok(x) => {
                     self.float_value = x;
                     self.expr_error = None;
+                    self.show_expr_result = true;
                     self.status = None;
                     self.push_history(trimmed, HistoryResult::Float(x));
                     self.refresh(None);
@@ -823,6 +832,7 @@ impl App {
             Ok(v) => {
                 self.value = v;
                 self.expr_error = None;
+                self.show_expr_result = true;
                 self.status = None;
                 self.push_history(
                     trimmed,
@@ -880,6 +890,8 @@ impl App {
         }
         self.expr = entry.expr;
         self.expr_error = None;
+        // The restored value is that expression's result, so show it.
+        self.show_expr_result = true;
         self.status = None;
         self.refresh(None);
     }
@@ -1272,6 +1284,7 @@ mod tests {
                 history_base: HistoryBase::Dec,
                 expr_error: None,
                 expr_focus_request: false,
+                show_expr_result: false,
                 status: None,
                 status_until: 0.0,
                 flash_until: 0.0,
@@ -1414,6 +1427,59 @@ mod tests {
         let before = app.value.raw();
         app.set_number_mode(NumberMode::Integer);
         assert_eq!(app.value.raw(), before);
+    }
+
+    // --- expression result line ---
+
+    #[test]
+    fn eval_shows_result_and_edit_keeps_it() {
+        let mut app = App::for_test();
+        assert!(!app.show_expr_result);
+        app.expr = "2**3".to_string();
+        assert!(app.eval_expr());
+        assert!(app.show_expr_result);
+        assert_eq!(app.value.raw(), 8);
+        // Editing the field doesn't touch the flag (only the UI's changed()
+        // path clears the error), so the line stays while typing.
+        app.expr = "ans + 1".to_string();
+        assert!(app.show_expr_result);
+    }
+
+    #[test]
+    fn eval_error_keeps_previous_result_flag() {
+        let mut app = App::for_test();
+        app.expr = "5".to_string();
+        assert!(app.eval_expr());
+        app.expr = "1 +".to_string();
+        assert!(!app.eval_expr());
+        assert!(app.expr_error.is_some());
+        // `ans` is unchanged, so the result line returns once the error clears.
+        assert!(app.show_expr_result);
+        assert_eq!(app.value.raw(), 5);
+    }
+
+    #[test]
+    fn value_change_outside_eval_hides_result() {
+        let mut app = App::for_test();
+        app.expr = "5".to_string();
+        assert!(app.eval_expr());
+        app.set_width(8);
+        assert!(!app.show_expr_result);
+
+        app.expr = "5".to_string();
+        assert!(app.eval_expr());
+        app.set_number_mode(NumberMode::Float);
+        assert!(!app.show_expr_result);
+    }
+
+    #[test]
+    fn recall_shows_result() {
+        let mut app = App::for_test();
+        app.recall(HistoryEntry {
+            expr: "1.5".to_string(),
+            result: HistoryResult::Float(1.5),
+        });
+        assert!(app.show_expr_result);
     }
 
     // --- recall ---
