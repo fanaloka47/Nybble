@@ -14,6 +14,17 @@ pub struct ReleaseNotes {
 /// `crates/gui/Cargo.toml`'s `version` to match — each time you cut a release.
 pub const ENTRIES: &[ReleaseNotes] = &[
     ReleaseNotes {
+        version: "1.6.1",
+        items: &[
+            "The Bits panel has new Set all (111), Clear (000) and Invert (~) buttons in its title row, which act on every bit of the current width.",
+            "After you press Enter, the result now appears right under the expression field, in decimal with its hex form alongside. It shows \"Enter to evaluate\" until then and keeps its space, so nothing below jumps when you evaluate. You can turn it off in Settings > Expressions.",
+            "Your width, signed/unsigned choice and fixed-point format are now remembered between sessions instead of resetting to 32-bit unsigned each time you open the app.",
+            "The expression field's example text and what you type are now the same size, so nothing jumps on your first keystroke, and the example is a single, simpler expression.",
+            "Expression error messages are now easier to read in the light theme.",
+            "Fixed: the Evaluate button sat slightly lower than the expression field.",
+        ],
+    },
+    ReleaseNotes {
         version: "1.6.0",
         items: &[
             "Added a Scratchpad tab for free-form notes that's saved with the rest of your preferences and restored the next time you open the app.",
