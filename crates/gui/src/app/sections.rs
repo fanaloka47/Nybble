@@ -85,6 +85,7 @@ impl App {
         // Hint and typed text share one size so nothing jumps on the first
         // keystroke.
         let expr_font = egui::FontId::new(20.0, egui::FontFamily::Monospace);
+        let expr_margin = egui::vec2(10.0, 8.0);
 
         // The box is multiline so long expressions wrap, but it behaves like a
         // single field: Enter submits rather than inserting a newline. Consume
@@ -100,8 +101,8 @@ impl App {
                 .font(expr_font.clone())
                 .desired_width(ui.available_width() - 60.0)
                 .desired_rows(1)
-                .hint_text(egui::RichText::new(hint).font(expr_font))
-                .margin(egui::vec2(10.0, 8.0))
+                .hint_text(egui::RichText::new(hint).font(expr_font.clone()))
+                .margin(expr_margin)
                 .show(ui);
             // A "send to expression" button replaced the text last frame and
             // asked us to focus; place the caret at the end so the user can type
@@ -129,20 +130,38 @@ impl App {
             if resp.changed() {
                 self.expr_error = None;
             }
+            // Place the button explicitly so it matches a one-line field exactly:
+            // same height, centred on the field (which only grows when a long
+            // expression wraps). Sizing it on its own let the glyph + padding
+            // make it a few px taller and lower than the field.
+            let field_rect = resp.rect;
+            let one_line_h = ui.fonts_mut(|f| f.row_height(&expr_font)) + 2.0 * expr_margin.y;
+            let btn_rect = egui::Rect::from_center_size(
+                egui::pos2(
+                    field_rect.right() + ui.spacing().item_spacing.x + 22.0,
+                    field_rect.center().y,
+                ),
+                egui::vec2(44.0, one_line_h),
+            );
             let clicked = ui
-                .add_sized(
-                    [44.0, 40.0],
-                    egui::Button::new(
-                        // `↵` lives only in the bundled monospace font (JetBrains
-                        // Mono), so render it with the monospace family or it
-                        // won't be found.
-                        egui::RichText::new("↵")
-                            .size(24.0)
-                            .monospace()
-                            .color(on_accent),
+                .scope(|ui| {
+                    // No padding, so the glyph can't push the button past its rect.
+                    ui.spacing_mut().button_padding = egui::Vec2::ZERO;
+                    ui.put(
+                        btn_rect,
+                        egui::Button::new(
+                            // `↵` lives only in the bundled monospace font
+                            // (JetBrains Mono), so render it with the monospace
+                            // family or it won't be found.
+                            egui::RichText::new("↵")
+                                .size(24.0)
+                                .monospace()
+                                .color(on_accent),
+                        )
+                        .fill(accent),
                     )
-                    .fill(accent),
-                )
+                })
+                .inner
                 .on_hover_text("Evaluate (Enter)")
                 .clicked();
             if clicked || submit_via_enter {
