@@ -88,6 +88,8 @@ struct Palette {
     accent: Color32,
     accent_soft: Color32,
     on_accent: Color32,
+    /// Inline error text (e.g. an invalid expression).
+    error: Color32,
 }
 
 fn palette(theme: Theme) -> Palette {
@@ -105,6 +107,7 @@ fn palette(theme: Theme) -> Palette {
             accent: Color32::from_rgb(129, 140, 248), // indigo-400
             accent_soft: Color32::from_rgba_unmultiplied(129, 140, 248, 90),
             on_accent: Color32::from_rgb(15, 17, 21),
+            error: Color32::from_rgb(229, 115, 115), // soft red, legible on dark
         },
         Theme::Light => Palette {
             dark: false,
@@ -119,6 +122,7 @@ fn palette(theme: Theme) -> Palette {
             accent: Color32::from_rgb(79, 70, 229), // indigo-600
             accent_soft: Color32::from_rgba_unmultiplied(79, 70, 229, 55),
             on_accent: Color32::from_rgb(255, 255, 255),
+            error: Color32::from_rgb(220, 38, 38), // red-600, legible on light
         },
     }
 }
@@ -146,6 +150,7 @@ fn build_style(theme: Theme) -> Style {
         Color32::from_rgb(242, 243, 246)
     };
     v.hyperlink_color = p.accent;
+    v.error_fg_color = p.error;
     v.selection.bg_fill = p.accent_soft;
     v.selection.stroke = Stroke::new(1.0, p.text);
 

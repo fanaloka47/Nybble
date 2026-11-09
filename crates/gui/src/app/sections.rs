@@ -155,7 +155,7 @@ impl App {
 
         if let Some(err) = &self.expr_error {
             ui.add_space(6.0);
-            ui.colored_label(egui::Color32::from_rgb(229, 115, 115), err);
+            ui.colored_label(ui.visuals().error_fg_color, err);
         }
     }
 
