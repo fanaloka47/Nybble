@@ -75,14 +75,16 @@ impl App {
         ui.label(egui::RichText::new("EXPRESSION").weak().small());
         ui.add_space(6.0);
 
-        // Hint and tooltip advertise the named functions, tailored to the mode:
-        // float mode has the full scientific set, integer mode a width-masked
-        // subset. The numeric logic itself lives entirely in `nybble-core`.
+        // One example per mode, so the hint can't be misread as a single
+        // expression. The tooltip points at the full function reference.
         let hint = if self.is_float_mode() {
-            "sqrt(2) · sin(pi/2) · 2**8"
+            "sqrt(2)*sin(pi/4)"
         } else {
-            "0xFF & (1 << 3) · log2(4)"
+            "0xFF & (1<<3)"
         };
+        // Hint and typed text share one size so nothing jumps on the first
+        // keystroke.
+        let expr_font = egui::FontId::new(20.0, egui::FontFamily::Monospace);
 
         // The box is multiline so long expressions wrap, but it behaves like a
         // single field: Enter submits rather than inserting a newline. Consume
@@ -95,13 +97,10 @@ impl App {
         ui.horizontal(|ui| {
             let mut out = egui::TextEdit::multiline(&mut self.expr)
                 .id(expr_id)
-                .font(egui::FontId::new(22.0, egui::FontFamily::Monospace))
+                .font(expr_font.clone())
                 .desired_width(ui.available_width() - 60.0)
                 .desired_rows(1)
-                .hint_text(
-                    egui::RichText::new(hint)
-                        .font(egui::FontId::new(16.0, egui::FontFamily::Monospace)),
-                )
+                .hint_text(egui::RichText::new(hint).font(expr_font))
                 .margin(egui::vec2(10.0, 8.0))
                 .show(ui);
             // A "send to expression" button replaced the text last frame and
@@ -134,8 +133,9 @@ impl App {
                 .add_sized(
                     [44.0, 40.0],
                     egui::Button::new(
-                        // `↵` lives only in the bundled monospace (Hack) font, so
-                        // render it with the monospace family or it won't be found.
+                        // `↵` lives only in the bundled monospace font (JetBrains
+                        // Mono), so render it with the monospace family or it
+                        // won't be found.
                         egui::RichText::new("↵")
                             .size(24.0)
                             .monospace()
